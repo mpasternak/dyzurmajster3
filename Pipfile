@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+django = "*"
+django-mptt = "*"
+django-db-constraints = "*"
+"psycopg2-binary" = "*"
+workalendar = "*"
+django-extensions = "*"
+
+[dev-packages]
+pytest = "*"
+pytest-django = "*"
+pytest-pythonpath = "*"
+model-mommy = "*"
+
+
+[requires]
+python_version = "3.6"

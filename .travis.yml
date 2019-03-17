@@ -1,0 +1,17 @@
+services:
+  - postgresql
+
+addons:
+  postgresql: "9.6"
+
+language: python
+
+python:
+  - "3.6"
+
+install:
+  - pipenv install -d
+
+script:
+  pytest
+  
