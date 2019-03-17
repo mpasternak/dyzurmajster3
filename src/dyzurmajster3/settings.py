@@ -25,10 +25,10 @@ INSTALLED_APPS = [
 
     'django_extensions',
     'mptt',
-    'holidays',
+    'adminsortable2',
 
+    'holidays',
     'piony',
-    'profil',
 
     # 'finalware'
 ]

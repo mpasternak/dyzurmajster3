@@ -8,23 +8,6 @@ from piony import const
 from piony.models import Pion
 from piony.models.grafik import Wpis
 
-
-def dostepne_piony(dzien):
-    holiday = Holiday.objects.is_holiday(dzien)
-    map = {
-        True: [const.NOCNYSWIATECZNY],
-        False: [const.DZIENNY, const.NOCNYSWIATECZNY]
-    }
-
-    for pion in Pion.objects.filter(rodzaj__in=map[holiday]).order_by('-priorytet', 'nazwa'):
-        for regula in pion.dostepnoscpionu_set.all().order_by("-kolejnosc"):
-            if regula.relevant(dzien):
-                if regula.dostepny:
-                    yield pion
-                break
-    yield Pion.objects.get(nazwa="L4")
-    yield Pion.objects.get(nazwa="Urlop")
-
 def dyzury_w_poprzednich_dobach(user, dzien):
     ret = 0
     while True:
