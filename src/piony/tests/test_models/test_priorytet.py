@@ -40,5 +40,4 @@ def test_Priorytet_clean(priorytet, pion, zp):
         koniec=priorytet.koniec,
         adnotacja="clean() nie powinno tego zapisać"
     )
-    with pytest.raises(ValidationError):
-        drugiPriorytet.full_clean()
+    drugiPriorytet.full_clean()

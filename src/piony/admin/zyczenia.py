@@ -97,6 +97,7 @@ class ZyczeniaPracownikaAdmin(admin.ModelAdmin):
                 'maks_godzin_ciaglej_pracy',
                 'min_odpoczynek_po_ciaglej_pracy',
                 'priorytet_bazowy',
+                'maks_dyzury',
                 'maks_dobowe',
                 'maks_zwykle',
                 'maks_dniowki',

@@ -9,13 +9,14 @@ from django.db import models
 from django.db.models import Q
 from django.template import Template, Context, TemplateSyntaxError
 from django.utils.functional import cached_property
+from mptt.fields import TreeForeignKey
 
 from core.helpers import daterange
 from holidays.models import Holiday
 from piony import const
-from piony.models.util import spacja_inicjal_z_kropka
 from .pion import Pion, dostepne_piony
 from .urlop import Urlop
+from .util import repr_user
 from .zyczenia import ZyczeniaPracownika
 
 
@@ -148,6 +149,7 @@ def jakichs_w_miesiacu(dzien, zp, grafik, funkcja):
     return Wpis.objects.filter(
         grafik=grafik,
         user=zp.user,
+        pion__rodzaj=const.NOCNYSWIATECZNY,
         dzien__in=funkcja(dzien)
     ).count()
 
@@ -295,6 +297,9 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
 
     for zp in w_pracy:
         # Ten użytkownik może wziąć coś tego dnia, sprawdźmy, czy ten pion:
+
+        if dzien == date(2019, 4, 6) and zp.user.username == 'bgdula':
+            print("X")
         if pion not in zp.wszystkie_dozwolone_piony():
             # Ten użytkownik nie ma przypisania do tego pionu
             yield (zp, False, const.BRAK_PRZYPISANIA, pion)
@@ -389,9 +394,39 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
         yield (zp, True, const.ZYCZENIE, zyczenie)
 
 
+class TrackerRozpisan:
+    def __init__(self):
+        self.wszyscy = set()
+        self.rozpisani_dzien = set()
+        self.rozpisani_noc = set()
+
+    def nierozpisani(self):
+        return self.wszyscy - self.rozpisani_dzien - self.rozpisani_noc
+
+    def rozpisz(self, pion, pracownik):
+        self.wszyscy.add(pracownik)
+        if pion.rodzaj == const.NOCNYSWIATECZNY:
+            self.rozpisani_noc.add(pracownik)
+        elif pion.rodzaj == const.DZIENNY:
+            self.rozpisani_dzien.add(pracownik)
+        else:
+            raise ValueError(pion.rodzaj)
+
+    def rozpisany(self, pion, pracownik):
+        if pion.rodzaj == const.NOCNYSWIATECZNY:
+            if pracownik in self.rozpisani_noc:
+                return True
+        elif pion.rodzaj == const.DZIENNY:
+            if pracownik in self.rozpisani_dzien:
+                return True
+        else:
+            raise ValueError(pion.rodzaj)
+
+
 class Grafik(models.Model):
     uuid = models.UUIDField(default=uuid4, editable=False, unique=True)
     nazwa = models.CharField(max_length=100, blank=True, null=True)
+    pion_dla_nierozpisanych = models.ForeignKey(Pion, models.SET_NULL, blank=True, null=True)
 
     class Meta:
         verbose_name_plural = 'grafiki'
@@ -400,32 +435,58 @@ class Grafik(models.Model):
     def uloz(self, start, koniec):
 
         for dzien in daterange(start, koniec):
-            print(dzien)
-            piony = dostepne_piony(dzien)
-            na_urlopie = Urlop.objects.filter(
-                Q(start__range=(dzien, dzien)) |
-                Q(koniec__range=(dzien, dzien)) |
-                Q(start__lt=dzien, koniec__gt=dzien)
-            ).values_list("parent__user_id")
+            piony = list(dostepne_piony(dzien))
+            posortowane_piony = [pion for pion, status, przyczyna in piony if status]
+            posortowane_piony.sort(key=lambda pion: pion.priorytet)
+
+            for urlop in Urlop.objects.filter(
+                    Q(start__range=(dzien, dzien)) |
+                    Q(koniec__range=(dzien, dzien)) |
+                    Q(start__lt=dzien, koniec__gt=dzien)
+            ):
+                self.wolne_set.create(
+                    dzien=dzien,
+                    user=urlop.parent.user,
+                    przyczyna=urlop.rodzaj
+                )
 
             # W tym momencie pracownicy to lista (zp, status, obiekt) zawierająca
             # wszystkich pracownikow. Jezeli pracownik niedostepny, to status to False,
             # a obiekt to np. Urlop. Jezeli pracownik dostepny, to status to True, a obiekt
             # to pierwsze pasujące do tego dnia życzenie
-            pracownicy = dostepni_pracownicy(dzien, grafik=self)
+            pracownicy = list(dostepni_pracownicy(dzien, grafik=self))
 
             w_pracy = set([pracownik for pracownik, status, przyczyna, obiekt in pracownicy if status])
 
             rezultaty = {}
+
+            wolne_po_dyzurze = set()
             for pion, dostepny, przyczyna in piony:
                 if not dostepny:
                     self.pionniepracuje_set.create(
+                        pion=pion,
                         dzien=dzien,
                         przyczyna=przyczyna
                     )
                     continue
                 lista = list(czy_moglby_wziac(pion, dzien, w_pracy, grafik=self))
+
+                if pion.rodzaj == const.DZIENNY:
+                    # Jeżeli ktokolwiek dla dziennego pionu ma przekroczonoe cokolwiek zwiazanego
+                    # z czasem pracy przy rozpisywaniu na pion dzienny to zaznacz go jako "wolne po dyżurze"
+                    for zp, status, przyczyna, obiekt in lista:
+                        if not status:
+                            if przyczyna in [const.ZBYT_MALY_ODPOCZYNEK, const.PRZEKROCZONY_CZAS_CIAGLEJ_PRACY]:
+                                wolne_po_dyzurze.add(zp.user)
+
                 rezultaty[pion] = lista
+
+            for user in wolne_po_dyzurze:
+                self.wolne_set.create(
+                    user=user,
+                    dzien=dzien,
+                    przyczyna="po dyż"
+                )
 
             dostepni = {}
             for pion, rezultat in rezultaty.items():
@@ -439,29 +500,56 @@ class Grafik(models.Model):
                     mozliwosci[zp] += 1
 
             for pion in dostepni.keys():
-                dostepni[pion].sort(key=lambda obj: (obj.priorytet_bazowy, mozliwosci[obj], obj.priorytet_pionu(dzien, pion)))
+                dostepni[pion].sort(
+                    key=lambda obj: (obj.priorytet_pionu(dzien, pion), mozliwosci[obj]))
 
-            kolejnosc_pionow = [pion for pion in dostepni.keys()]
-            kolejnosc_pionow.sort(key=lambda obj: obj.priorytet)
+            for rodzaj in const.DZIENNY, const.NOCNYSWIATECZNY:
+                tr = TrackerRozpisan()
 
-            rozpisani = set()
-            for pion in kolejnosc_pionow:
-                pracownicy = dostepni.get(pion)
-                if not pracownicy:
-                    print(pion, "brak obsady")
-                    continue
-                for pracownik in pracownicy:
-                    if pracownik.user in rozpisani:
+                for pion in [pion for pion in posortowane_piony if pion.rodzaj == rodzaj]:
+                    pracownicy = dostepni.get(pion)
+
+                    tr.wszyscy = set(pracownicy)
+
+                    if not pracownicy:
+                        print(pion, "brak obsady")
                         continue
 
-                    w = self.wpis_set.create(
-                        user=pracownik.user,
-                        dzien=dzien,
-                        pion=pion
-                    )
-                    print(pion, w.user)
-                    rozpisani.add(pracownik.user)
-                    break
+                    for pracownik in pracownicy:
+                        if tr.rozpisany(pion, pracownik):
+                            continue
+
+                        w = self.wpis_set.create(
+                            user=pracownik.user,
+                            dzien=dzien,
+                            pion=pion
+                        )
+                        print(pion, w.user)
+                        tr.rozpisz(pion, pracownik)
+                        break
+
+                if rodzaj == const.DZIENNY:
+                    for nierozpisany in tr.nierozpisani():
+                        if self.pion_dla_nierozpisanych:
+                            self.wpis_set.create(
+                                user=nierozpisany.user,
+                                dzien=dzien,
+                                pion=self.pion_dla_nierozpisanych
+                            )
+                            print("nierozpisany", nierozpisany.user, "=>", self.pion_dla_nierozpisanych)
+                            continue
+
+                        self.nierozpisany_set.create(
+                            user=nierozpisany.user,
+                            dzien=dzien
+                        )
+                        print("nierozpisany", nierozpisany.user)
+
+    def wyczysc_wpisy(self, start, koniec):
+        for rec_set in [self.wpis_set, self.pionniepracuje_set, self.wolne_set, self.nierozpisany_set]:
+            rec_set.filter(
+                dzien__range=(start, koniec)
+            ).delete()
 
 
 class BazaWpisuGrafika(models.Model):
@@ -469,7 +557,6 @@ class BazaWpisuGrafika(models.Model):
     dzien = models.DateField(db_index=True)
 
     zmodyfikowano = models.DateTimeField(auto_now=True)
-
 
     class Meta:
         abstract = True
@@ -489,6 +576,10 @@ class PionNiePracuje(BazaWpisuGrafika):
 
 class Wolne(BazaWpisuUzytkownika):
     przyczyna = models.CharField(max_length=100)
+
+
+class Nierozpisany(BazaWpisuUzytkownika):
+    pass
 
 
 class Wpis(BazaWpisuUzytkownika):
@@ -529,9 +620,7 @@ class Wpis(BazaWpisuUzytkownika):
             return Template(self.template).render(
                 Context(dict(user=self.user, dzien=self.dzien, pion=self.pion)))
 
-        ret = f"{self.user.last_name}{spacja_inicjal_z_kropka(self.user.first_name)}"
-        if not ret:
-            ret = f"{self.user}"
+        ret = repr_user(self.user)
         return ret
 
     class Meta:
@@ -539,3 +628,16 @@ class Wpis(BazaWpisuUzytkownika):
             ('user', 'dzien', 'pion')
         ]
         verbose_name_plural = 'wpisy'
+
+def dzienne():
+    raise NotImplementedError
+nocneswiateczne = dzienne
+
+
+
+class ZestawiajRazem(models.Model):
+    parent = models.ForeignKey(Grafik, models.CASCADE)
+    dzienny = TreeForeignKey(Pion, models.CASCADE, limit_choices_to={"rodzaj": const.DZIENNY}, related_name="+")
+    nocnyswiateczny = TreeForeignKey(Pion, models.CASCADE,
+                                        limit_choices_to={"rodzaj": const.NOCNYSWIATECZNY},
+                                        related_name="+")

@@ -5,7 +5,8 @@ from django.db import models
 
 from holidays.models import Holiday
 from piony import const
-from piony.models import Pion, Wpis, poczatek_miesiaca, koniec_miesiaca
+from piony.models import Pion, Wpis, poczatek_miesiaca, koniec_miesiaca, PionNiePracuje, Nierozpisany, Wolne
+from piony.models.util import repr_user
 
 
 class Wydruk(models.Model):
@@ -90,7 +91,9 @@ class ElementWydruku(models.Model):
         choices=[
             (const.KOLUMNA_DZIEN, "Dzień"),
             (const.KOLUMNA_DZIEN_TYGODNIA, "Dzień tygodnia"),
-            (const.KOLUMNA_PION, "Pion")
+            (const.KOLUMNA_PION, "Pion"),
+            (const.KOLUMNA_WOLNE, "Wolne"),
+            (const.KOLUMNA_NIEROZPISANI, "Nierozpisani")
         ]
     )
 
@@ -118,6 +121,10 @@ class ElementWydruku(models.Model):
             return "Dzień tygodnia"
         elif self.rodzaj == const.KOLUMNA_PION:
             return self.pion.nazwa
+        elif self.rodzaj == const.KOLUMNA_NIEROZPISANI:
+            return "Nierozpisani"
+        elif self.rodzaj == const.KOLUMNA_WOLNE:
+            return "Wolne"
 
         raise ValueError(self.rodzaj)
 
@@ -127,9 +134,30 @@ class ElementWydruku(models.Model):
                 return f"<b>{dzien}</b>"
             else:
                 return f"{dzien}"
+
         elif self.rodzaj == const.KOLUMNA_DZIEN_TYGODNIA:
             return dzien.strftime("%A")
+
+        elif self.rodzaj == const.KOLUMNA_WOLNE:
+            ret = []
+            for wolne in Wolne.objects.filter(dzien=dzien, grafik=grafik):
+                ret.append(f"{repr_user(wolne.user)} ({wolne.przyczyna})")
+            return ", ".join(ret)
+
+        elif self.rodzaj == const.KOLUMNA_NIEROZPISANI:
+            ret = []
+            for nierozpisany in Nierozpisany.objects.filter(dzien=dzien, grafik=grafik):
+                ret.append(repr_user(nierozpisany.user))
+            return ", ".join(ret)
+
         else:
+            try:
+                pnp = PionNiePracuje.objects.get(dzien=dzien, pion=self.pion, grafik=grafik)
+                return pnp.przyczyna
+            except PionNiePracuje.DoesNotExist:
+                pass
+
+
             ret = []
             for wpis in Wpis.objects.filter(dzien=dzien, pion=self.pion, grafik=grafik):
                 ret.append(wpis.render())

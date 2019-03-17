@@ -61,6 +61,12 @@ def spacja_inicjal_z_kropka(s):
         return ""
 
 
+def repr_user(user):
+    if not user.last_name:
+        return user.username
+    return f"{user.last_name}{spacja_inicjal_z_kropka(user.first_name)}"
+
+
 def pracownik_etatowy(pracownik, pion=None, dzien_1=True, dzien_2=True, dzien_3=True, dzien_4=True,
                       dzien_5=True, dzien_6=False, dzien_7=False,
                       specjalizacja=const.SPECJALISTA, **kw):

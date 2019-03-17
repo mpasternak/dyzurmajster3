@@ -9,7 +9,7 @@ from .pion import Pion
 from .zyczenia import ZyczeniaPracownika
 
 
-class Priorytet(SprawdzZakresyMixin, models.Model):
+class Priorytet(models.Model):
     parent = models.ForeignKey(ZyczeniaPracownika, models.CASCADE)
 
     start = models.DateField(db_index=True)
@@ -21,17 +21,11 @@ class Priorytet(SprawdzZakresyMixin, models.Model):
     ])
     adnotacja = models.CharField(max_length=100, blank=True, null=True)
 
-    # TODO: zrobić SQL-constraint testujący na okoliczność zbieżnych czasokresów
-
     class Meta:
         verbose_name = "priorytet"
         verbose_name_plural = "priorytety"
 
     def __str__(self):
-        # import pdb; pdb.set_trace()
-        # piony = self.piony.all()
-        #
-        # piony = ", ".join([str(x) for x in piony])
         b = f"{self.parent.user}  ma priorytet {self.priorytet} {self.adnotacja or ''} od {self.start}"
         if self.koniec is not None:
             b += f" do {self.koniec}"

@@ -231,6 +231,7 @@ class ZyczeniaPracownika(models.Model):
 
         return ret
 
+    # @cached_property
     def wszystkie_dozwolone_piony(self):
         s = set()
         for pion in self.dozwolone_piony.all():
@@ -241,20 +242,13 @@ class ZyczeniaPracownika(models.Model):
 
     def priorytet_pionu(self, dzien, pion):
 
-        priorytet = self.priorytet_set.filter(
-            Q(start__range=(dzien, dzien)) |
-            Q(koniec__range=(dzien, dzien)) |
-            Q(start__lt=dzien, koniec__gt=dzien)
-        ).first()
+        for priorytet in self.priorytet_set.filter(
+                Q(start__range=(dzien, dzien)) |
+                Q(koniec__range=(dzien, dzien)) |
+                Q(start__lt=dzien, koniec__gt=dzien)):
 
-        if priorytet is not None:
-            s = set()
-            for p in priorytet.piony.all():
-                s.add(p)
-                for p in p.get_descendants():
-                    s.add(p)
-
-            if pion in s:
-                return priorytet.priorytet
+            for elem in [pion.get_descendants(include_self=True) for pion in priorytet.piony.all()]:
+                if pion in elem:
+                    return priorytet.priorytet
 
         return self.priorytet_bazowy
