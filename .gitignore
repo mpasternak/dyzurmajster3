@@ -103,3 +103,4 @@ venv.bak/
 # mypy
 .mypy_cache/
 /src/piony/management/commands/jbozy_initial_data.py
+*.sql
