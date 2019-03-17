@@ -1,10 +1,8 @@
-import dateutil.parser
+from django.core.management import BaseCommand
 from django.core.management import BaseCommand
 from django.db import transaction
 
-from piony.core import uloz_dyzury
-from piony.models import Wpis
-
+from piony.models import Grafik
 
 
 class Command(BaseCommand):
@@ -15,5 +13,11 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, start, koniec, *args, **options):
-        Wpis.objects.filter(dzien__gte=start, dzien__lte=koniec).delete()
-        uloz_dyzury(start, koniec)
+        grafik = Grafik.objects.all().first()
+
+        grafik.wpis_set.filter(
+            dzien__gte=start,
+            dzien__lte=koniec
+        ).delete()
+
+        grafik.uloz(start, koniec)

@@ -108,9 +108,9 @@ class ZyczeniaPracownikaAdmin(admin.ModelAdmin):
         }),
     )
     form = ZyczeniaPracownikaForm
-    list_display = ['last_name', 'first_name']
+    list_display = ['last_name', 'first_name', 'priorytet_bazowy', 'specjalizacja', 'emeryt']
     inlines = [UrlopInline, PriorytetInline, ZyczeniaOgolneInline, ZyczeniaSzczegoloweInline]
-    list_filter = [DyzurmajsterUserFilter, ]
+    list_filter = [DyzurmajsterUserFilter, 'specjalizacja', 'emeryt']
     search_fields = ['user__username', 'user__last_name']
     ordering = ['user__last_name']
     list_select_related = True

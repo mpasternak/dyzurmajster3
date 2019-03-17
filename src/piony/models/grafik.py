@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import timedelta
+from datetime import timedelta, date
 from uuid import uuid4
 
 from dateutil import relativedelta
@@ -314,6 +314,9 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
 
         if not dopasowanie:
             yield (zp, False, const.NIEDOPASOWANE, None)
+            # Życzenie nie jest dopasowane do pionu, nie analizuj dalszych
+            # dostępności, czasów itp
+            continue
 
         # Jeżeli mamy adekwatne do pionu/daty życzenie i mówi ono, ze
         # użytkownik NIE jest wówczas dostępny, to nie sprawdzaj, ile
@@ -387,13 +390,17 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
 
 
 class Grafik(models.Model):
-    uuid = models.UUIDField(default=uuid4(), editable=False, unique=True)
-    miesiac = models.DateField()
+    uuid = models.UUIDField(default=uuid4, editable=False, unique=True)
+    nazwa = models.CharField(max_length=100, blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = 'grafiki'
+        verbose_name = 'grafik'
 
     def uloz(self, start, koniec):
 
         for dzien in daterange(start, koniec):
-
+            print(dzien)
             piony = dostepne_piony(dzien)
             na_urlopie = Urlop.objects.filter(
                 Q(start__range=(dzien, dzien)) |
@@ -407,7 +414,7 @@ class Grafik(models.Model):
             # to pierwsze pasujące do tego dnia życzenie
             pracownicy = dostepni_pracownicy(dzien, grafik=self)
 
-            w_pracy = [pracownik for pracownik, status, przyczyna, obiekt in pracownicy if status]
+            w_pracy = set([pracownik for pracownik, status, przyczyna, obiekt in pracownicy if status])
 
             rezultaty = {}
             for pion, dostepny, przyczyna in piony:
@@ -432,7 +439,7 @@ class Grafik(models.Model):
                     mozliwosci[zp] += 1
 
             for pion in dostepni.keys():
-                dostepni[pion].sort(key=lambda obj: (mozliwosci[obj], obj.priorytet_pionu(dzien, pion)))
+                dostepni[pion].sort(key=lambda obj: (obj.priorytet_bazowy, mozliwosci[obj], obj.priorytet_pionu(dzien, pion)))
 
             kolejnosc_pionow = [pion for pion in dostepni.keys()]
             kolejnosc_pionow.sort(key=lambda obj: obj.priorytet)
@@ -441,16 +448,18 @@ class Grafik(models.Model):
             for pion in kolejnosc_pionow:
                 pracownicy = dostepni.get(pion)
                 if not pracownicy:
+                    print(pion, "brak obsady")
                     continue
                 for pracownik in pracownicy:
-                    if pracownik in rozpisani:
+                    if pracownik.user in rozpisani:
                         continue
 
-                    self.wpis_set.create(
+                    w = self.wpis_set.create(
                         user=pracownik.user,
                         dzien=dzien,
                         pion=pion
                     )
+                    print(pion, w.user)
                     rozpisani.add(pracownik.user)
                     break
 

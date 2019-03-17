@@ -28,8 +28,11 @@ class Priorytet(SprawdzZakresyMixin, models.Model):
         verbose_name_plural = "priorytety"
 
     def __str__(self):
-        piony = ", ".join([str(x) for x in self.piony.all()])
-        b = f"{self.parent.user} dla {piony} ma priorytet {self.priorytet} {self.adnotacja or ''} od {self.start}"
+        # import pdb; pdb.set_trace()
+        # piony = self.piony.all()
+        #
+        # piony = ", ".join([str(x) for x in piony])
+        b = f"{self.parent.user}  ma priorytet {self.priorytet} {self.adnotacja or ''} od {self.start}"
         if self.koniec is not None:
             b += f" do {self.koniec}"
         return b

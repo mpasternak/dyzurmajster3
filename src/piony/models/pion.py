@@ -64,7 +64,7 @@ def dostepne_piony(dzien):
         False: [const.DZIENNY, const.NOCNYSWIATECZNY]
     }
 
-    for pion in Pion.objects.filter(rodzaj__in=map[holiday]).order_by('-priorytet', 'nazwa'):
+    for pion in Pion.objects.filter(rodzaj__in=map[holiday]).order_by('priorytet', 'nazwa'):
         try:
             pwp = PrzerwaWPracyPionu.objects.get(
                 Q(parent=pion) & (

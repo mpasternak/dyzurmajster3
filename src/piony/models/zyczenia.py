@@ -43,14 +43,16 @@ class BazaZyczen(models.Model):
             })
 
         if self.rodzaj_pionu and self.pion:
-            if self.rodzaj_pionu != self.pion.rodzaj_pionu:
+            if self.pion.rodzaj is not None and self.rodzaj_pionu != self.pion.rodzaj:
                 raise ValidationError({
                     "rodzaj_pionu": "Wybrano różny rodzaj pionu i pion, reguła nie będzie miała sensu"
                 })
 
     def relevant(self, pion, dzien):
         if self.pion is not None:
-            if self.pion != pion:
+            # Ta reguła ma podany pion. Zasadą jest, że akceptujemy wszystkie pod-piony
+            # pionu podanego jako nadrzędny w regule:
+            if pion not in self.pion.get_descendants(include_self=True):
                 return False
 
         if self.rodzaj_pionu is not None:
@@ -99,6 +101,14 @@ class ZyczeniaSzczegolowe(BazaZyczen):
         verbose_name = 'życzenie szczegółówe'
         verbose_name_plural = 'życzenia szczegółowe'
 
+    def __str__(self):
+        ret = f"Życzenie szczegółowe dla {self.parent.user} na miesiąc {self.miesiac_i_rok}, {self.lista_dni}"
+        if self.pion:
+            ret += f" pion {self.pion}"
+        if self.rodzaj_pionu:
+            ret += f" rodzaj {self.rodzaj_pionu}"
+        return ret
+
 
 class ZyczeniaOgolne(BazaZyczen):
     start = models.DateField("Początek", blank=True, null=True)
@@ -129,6 +139,12 @@ class ZyczeniaOgolne(BazaZyczen):
 
     def relevant_zakres_dat(self, dzien):
         assert dzien is not None
+
+        attr_name = f"dzien_{dzien.isoweekday()}"
+        if not getattr(self, attr_name):
+            # Jeżeli ta reguła nie ma zastosowania do tego dnia tygodnia, to
+            # nie sprawdzaj zakresu dat
+            return False
 
         if self.start is None and self.koniec is None:
             return True
