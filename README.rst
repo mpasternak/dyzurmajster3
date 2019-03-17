@@ -1,6 +1,10 @@
 dyżurmajster
 ============
 
+.. image:: https://travis-ci.org/mpasternak/dyzurmajster3.svg?branch=develop
+   :target: https://travis-ci.org/mpasternak/dyzurmajster3
+
+
 Oprogramowanie do układania dyżurów lekarskich na bazie reguł, napisane w języku programowania
 Python przy użyciu frameworka Django.
 
