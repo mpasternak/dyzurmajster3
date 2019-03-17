@@ -5,3 +5,4 @@ from .pion import *
 from .zyczenia import *
 from .urlop import *
 from .priorytet import *
+from .wydruk import *

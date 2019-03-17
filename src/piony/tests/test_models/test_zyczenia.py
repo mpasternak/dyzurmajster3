@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -43,3 +43,54 @@ def test_BazaZyczen_sprawdza_piony_nadrzedne(zp, zyczenia_set, extra_args):
         pion=dozwolonyPion, **extra_args
     )
     obj2.clean()
+
+
+def test_priorytet_pionu(zp, pion_dzienny, pion_nocny, nowy_rok, luty):
+    zp.priorytet_bazowy = 99
+    zp.save()
+
+    priorytet = zp.priorytet_set.create(
+        start=nowy_rok,
+        koniec=luty,
+    )
+    priorytet.piony.add(pion_nocny)
+
+    assert zp.priorytet_pionu(nowy_rok, pion_dzienny) == 99
+    assert zp.priorytet_pionu(nowy_rok, pion_nocny) == 50
+    assert zp.priorytet_pionu(luty, pion_nocny) == 50
+    assert zp.priorytet_pionu(luty + timedelta(days=5), pion_nocny) == 99
+
+
+def test_ZyczeniaOgolne_relevant_zakres_dat(wtorek, sroda, czwartek, piatek):
+    z = ZyczeniaOgolne(start=None, koniec=None)
+    assert z.relevant_zakres_dat(wtorek)
+    assert z.relevant_zakres_dat(sroda)
+    assert z.relevant_zakres_dat(czwartek)
+
+    z = ZyczeniaOgolne(start=None, koniec=wtorek)
+    assert z.relevant_zakres_dat(wtorek)
+    assert not z.relevant_zakres_dat(sroda)
+    assert not z.relevant_zakres_dat(czwartek)
+
+    z = ZyczeniaOgolne(start=sroda, koniec=None)
+    assert not z.relevant_zakres_dat(wtorek)
+    assert z.relevant_zakres_dat(sroda)
+    assert z.relevant_zakres_dat(czwartek)
+
+    z = ZyczeniaOgolne(start=wtorek, koniec=czwartek)
+    assert z.relevant_zakres_dat(wtorek)
+    assert z.relevant_zakres_dat(sroda)
+    assert z.relevant_zakres_dat(czwartek)
+
+    z = ZyczeniaOgolne(start=sroda, koniec=czwartek)
+    assert not z.relevant_zakres_dat(wtorek)
+
+    z = ZyczeniaOgolne(start=wtorek, koniec=sroda)
+    assert not z.relevant_zakres_dat(piatek)
+
+
+def test_ZyczeniaSzczegolowe_relevant_zakres_dat(nowy_rok, wtorek, sroda, czwartek):
+    z = ZyczeniaSzczegolowe(miesiac_i_rok=nowy_rok, lista_dni="2,3")
+    assert not z.relevant_zakres_dat(wtorek)
+    assert z.relevant_zakres_dat(sroda)
+    assert z.relevant_zakres_dat(czwartek)

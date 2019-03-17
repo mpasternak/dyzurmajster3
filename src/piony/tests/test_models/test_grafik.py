@@ -10,7 +10,7 @@ from piony.models import Wpis, dostepni_pracownicy, czy_moglby_wziac, godziny_ci
     robil_w_dzien, ostatnio_pracowal_godzin_temu, ostatnia_dniowka_dni_temu, dniowek_w_miesiacu, dniowek_w_tygodniu, \
     poczatek_tygodnia, koniec_tygodnia, dyzurow_w_miesiacu, ostatni_dyzur_dni_temu, ZyczeniaPracownika, \
     sprawdz_nie_dyzuruje_z, dni_swiateczne_w_miesiacu, dni_powszednie_w_miesiacu, dobowych_w_miesiacu, \
-    zwyklych_w_miesiacu, SwietoError
+    zwyklych_w_miesiacu, SwietoError, Pion, Wydruk
 
 
 def test_grafik_wpis_clean():
@@ -27,7 +27,8 @@ def test_grafik_wpis_str(wpis):
 
 
 def test_grafik_wpis_render(wpis):
-    assert wpis.render() is not None
+    ret = wpis.render()
+    assert len(ret) > 1
 
 
 def test_grafik_wpis_render_2(wpis):
@@ -60,7 +61,7 @@ def test_dostepni_pracownicy_zyczenie_szczegolowe(zp, nowy_rok):
     l = list(dostepni_pracownicy(nowy_rok, grafik=None))
     zyczenia, dostepny, przyczyna, obiekt = l[0]
     assert dostepny
-    assert przyczyna == const.SZCZEGOLOWE
+    assert przyczyna == const.ZYCZENIE
 
 
 def test_dostepni_pracownicy_zyczenie_ogolne(zp, nowy_rok):
@@ -70,7 +71,7 @@ def test_dostepni_pracownicy_zyczenie_ogolne(zp, nowy_rok):
     l = list(dostepni_pracownicy(nowy_rok, grafik=None))
     zyczenia, dostepny, przyczyna, obiekt = l[0]
     assert dostepny
-    assert przyczyna == const.OGOLNE
+    assert przyczyna == const.ZYCZENIE
 
 
 @pytest.fixture
@@ -178,7 +179,8 @@ def test_dniowek_w_tygodniu(wtorek, sroda, czwartek, pion_dzienny, pion_nocny, z
 
 def oni_mogliby_wziac(pion, dzien, grafik=None):
     dp = dostepni_pracownicy(dzien, grafik=grafik)
-    return list(czy_moglby_wziac(pion, dzien, dp, grafik=grafik))
+    w_pracy = [pracownik for pracownik, status, przyczyna, obiekt in dp if status]
+    return list(czy_moglby_wziac(pion, dzien, w_pracy, grafik=grafik))
 
 
 def czy_dyzurant_wezmie(dyzurant, dzien, pion, grafik=None):
@@ -193,6 +195,16 @@ def test_czy_moglby_wziac(dyzurant, pion_nocny, nowy_rok):
     assert moze
 
 
+def test_czy_moglby_wziac_zly_rodzaj_pionu(dyzurant, pion_dzienny, sroda):
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny)
+    assert not moze
+
+
+def test_czy_moglby_wziac_zly_rodzaj_pionu_2(etatowy, pion_nocny, nowy_rok):
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(etatowy, nowy_rok, pion_nocny)
+    assert not moze
+
+
 def test_czy_moglby_wziac_brak_przypisania(dyzurant, pion_dzienny, sroda):
     dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny)
     assert not moze
@@ -202,6 +214,13 @@ def test_czy_moglby_wziac_brak_przypisania(dyzurant, pion_dzienny, sroda):
 def test_czy_moglby_wziac_przekroczony_czas_pracy(grafik, dyzurant, nowy_rok, sroda, pion_nocny, pion_dzienny):
     dyzurant.maks_godzin_ciaglej_pracy = 32
     dyzurant.dozwolone_piony.add(pion_dzienny)
+
+    zo = dyzurant.zyczeniaogolne_set.create(
+        rodzaj_pionu=const.DZIENNY,
+        adnotacja="Etat"
+    )
+    assert zo.relevant(pion_dzienny, sroda)
+
     dyzurant.save()
 
     grafik.wpis_set.create(
@@ -211,7 +230,7 @@ def test_czy_moglby_wziac_przekroczony_czas_pracy(grafik, dyzurant, nowy_rok, sr
     )
 
     dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny, grafik)
-    assert moze
+    assert moze, przyczyna
 
     dyzurant.maks_godzin_ciaglej_pracy = 24
     dyzurant.save()
@@ -231,10 +250,15 @@ def test_czy_moglby_wziac_zbyt_maly_odpoczynek(grafik, dyzurant, nowy_rok, sroda
         dzien=nowy_rok
     )
 
+    dyzurant.zyczeniaogolne_set.create(
+        rodzaj_pionu=const.DZIENNY,
+        adnotacja="Etat"
+    )
+
     dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny, grafik)
     assert not moze
     dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, czwartek, pion_dzienny, grafik)
-    assert moze
+    assert moze, przyczyna
 
     dyzurant.min_odpoczynek_po_ciaglej_pracy = 24
     dyzurant.save()
@@ -276,11 +300,14 @@ def test_czy_moglby_wziac_nieodstepny_w_tym_pionie_oglne_2(dyzurant, pion_nocny,
 
 
 def test_czy_moglby_wziac_ogolnie_nieodstepny_w_tym_pionie_ale_jest_szczegolowe(dyzurant, pion_nocny, nowy_rok):
+    dyzurant.zyczeniaogolne_set.all().delete()
+
     dyzurant.zyczeniaogolne_set.create(
         start=nowy_rok,
         koniec=nowy_rok,
         dostepny=False,
-        kolejnosc=1
+        kolejnosc=1,
+        adnotacja="W nowy rok nie moze"
     )
 
     dyzurant.zyczeniaszczegolowe_set.create(
@@ -289,8 +316,8 @@ def test_czy_moglby_wziac_ogolnie_nieodstepny_w_tym_pionie_ale_jest_szczegolowe(
         lista_dni="1"
     )
     dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
-    assert moze
-    assert przyczyna == const.SZCZEGOLOWE
+    assert moze, obiekt
+    assert przyczyna == const.ZYCZENIE, obiekt
 
 
 def test_czy_moglby_wziac_przekroczone_dniowki(zp, etatowy, pion_dzienny, sroda):
@@ -338,14 +365,72 @@ def test_czy_moglby_wziac_przekroczone_zwykle(zp, dyzurant, pion_nocny, sroda):
     assert przyczyna == const.MAKS_DYZURY_ZWYKLE_W_MIESIACU
 
 
-def test_Grafik_uloz(grafik, pion_dzienny, pion_nocny, zp, nowy_rok, luty):
-    zp.zyczeniaogolne_set.create(
-        adnotacja="Ciagly dyzur",
-        rodzaj_pionu=const.NOCNYSWIATECZNY
+def test_Grafik_uloz(grafik, nowy_rok, luty):
+    """
+    Jest 2 piony nocne, 1 dzienny
+
+    Jest dwóch użytkowników z czego jeden ma etat i dyżury w obydwu pionach,
+
+    drugi z kolei ma pojedyncze dyżury w pionie nocnym pierwszym, bez etatu.
+    """
+    pion_dzienny = mommy.make(Pion, nazwa='Dzienny', rodzaj=const.DZIENNY)
+    pion_nocny = mommy.make(Pion, nazwa='Nocny 1', rodzaj=const.NOCNYSWIATECZNY)
+    pion_nocny_drugi = mommy.make(Pion, nazwa='Nocny 2', rodzaj=const.NOCNYSWIATECZNY)
+
+    user1 = mommy.make(User, username='User 1')
+    zp1 = ZyczeniaPracownika.objects.create(
+        user=user1,
+    )
+    zp1.dozwolone_piony.add(pion_dzienny, pion_nocny, pion_nocny_drugi)
+    zp1.zyczeniaogolne_set.create(
+        rodzaj_pionu=const.DZIENNY,
+        adnotacja='Etat',
+    )
+    zp1.zyczeniaszczegolowe_set.create(
+        rodzaj_pionu=const.NOCNYSWIATECZNY,
+        lista_dni="2,5,10"
     )
 
-    res = grafik.uloz(nowy_rok, luty)
-    assert res
+    user2 = mommy.make(User, username='User 2')
+    zp2 = ZyczeniaPracownika.objects.create(
+        user=user2
+    )
+    zp2.dozwolone_piony.add(pion_nocny)
+    zp2.zyczeniaszczegolowe_set.create(
+        miesiac_i_rok=nowy_rok,
+        lista_dni="1,2,5,10",
+        adnotacja="Zyczenia dyzurowe"
+    )
+
+    grafik.uloz(nowy_rok, luty)
+
+    assert grafik.wpis_set.get(
+        dzien="2019-01-10",
+        pion=pion_nocny,
+    ).user == user2
+
+    w = Wydruk.objects.create(kod='W1', rodzaj=const.MIESIECZNY)
+    w.elementwydruku_set.create(
+        rodzaj=const.KOLUMNA_DZIEN,
+        kolejnosc=1
+    )
+    w.elementwydruku_set.create(
+        rodzaj=const.KOLUMNA_DZIEN_TYGODNIA,
+        kolejnosc=2
+    )
+    w.elementwydruku_set.create(
+        rodzaj=const.KOLUMNA_PION,
+        pion=pion_nocny,
+        kolejnosc=3
+    )
+    w.elementwydruku_set.create(
+        rodzaj=const.KOLUMNA_PION,
+        pion=pion_nocny_drugi,
+        kolejnosc=4
+    )
+
+    res = w.drukuj(nowy_rok, grafik)
+    assert len(res) > 1
 
 
 def test_ile_robil_czy_mial_dobe_swieto(zp, pion_dzienny, pion_nocny, nowy_rok, grafik):

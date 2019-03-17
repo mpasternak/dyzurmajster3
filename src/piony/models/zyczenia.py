@@ -1,11 +1,11 @@
 # -*- encoding: utf-8 -*-
-from datetime import date
 
 from dateutil import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import models
+from django.db.models import Q
 from mptt.fields import TreeForeignKey, TreeManyToManyField
 
 from piony import const
@@ -48,6 +48,16 @@ class BazaZyczen(models.Model):
                     "rodzaj_pionu": "Wybrano różny rodzaj pionu i pion, reguła nie będzie miała sensu"
                 })
 
+    def relevant(self, pion, dzien):
+        if self.pion is not None:
+            if self.pion != pion:
+                return False
+
+        if self.rodzaj_pionu is not None:
+            if self.rodzaj_pionu != pion.rodzaj:
+                return False
+
+        return self.relevant_zakres_dat(dzien)
 
     class Meta:
         abstract = True
@@ -56,6 +66,7 @@ class BazaZyczen(models.Model):
 def next_month():
     from django.utils import timezone
     return (timezone.now().date() + relativedelta.relativedelta(months=1)).replace(day=1)
+
 
 class ZyczeniaSzczegolowe(BazaZyczen):
     miesiac_i_rok = models.DateField(default=next_month)
@@ -67,6 +78,10 @@ class ZyczeniaSzczegolowe(BazaZyczen):
     def dni(self):
         return parsuj_liste_dni(self.lista_dni)
 
+    def daty(self):
+        for elem in self.dni():
+            yield self.miesiac_i_rok.replace(day=elem)
+
     def clean(self):
         super(ZyczeniaSzczegolowe, self).clean()
 
@@ -76,6 +91,9 @@ class ZyczeniaSzczegolowe(BazaZyczen):
         )
 
         # TODO: sprawdź, czy nie ma nachodzących na siebie okresów zdefiniowanych w bazie
+
+    def relevant_zakres_dat(self, dzien):
+        return dzien in self.daty()
 
     class Meta:
         verbose_name = 'życzenie szczegółówe'
@@ -108,6 +126,21 @@ class ZyczeniaOgolne(BazaZyczen):
 
     def __str__(self):
         return f"Życzenie {self.adnotacja} dla {self.parent.user}"
+
+    def relevant_zakres_dat(self, dzien):
+        assert dzien is not None
+
+        if self.start is None and self.koniec is None:
+            return True
+
+        if self.start is not None and self.start <= dzien and self.koniec is None:
+            return True
+
+        if self.start is None and self.koniec is not None and self.koniec >= dzien:
+            return True
+
+        if self.start is not None and self.koniec is not None and self.start <= dzien and self.koniec >= dzien:
+            return True
 
     class Meta:
         verbose_name_plural = 'życzenia ogólne'
@@ -146,7 +179,8 @@ class ZyczeniaPracownika(models.Model):
     priorytet_bazowy = models.PositiveSmallIntegerField(default=50)
 
     maks_dniowki = models.PositiveSmallIntegerField("Maks. dniówek", default=None, blank=True, null=True)
-    maks_dniowki_w_tygodniu = models.PositiveSmallIntegerField("Maks. dniówek w tygodniu", default=None, blank=True, null=True)
+    maks_dniowki_w_tygodniu = models.PositiveSmallIntegerField("Maks. dniówek w tygodniu", default=None, blank=True,
+                                                               null=True)
     maks_dyzury = models.PositiveSmallIntegerField("Maks. dyżurów", default=None, blank=True, null=True)
     maks_dobowe = models.PositiveSmallIntegerField("Maks. dobowych", default=None, blank=True, null=True)
     maks_zwykle = models.PositiveSmallIntegerField("Maks. zwykłych", default=None, blank=True, null=True)
@@ -188,3 +222,23 @@ class ZyczeniaPracownika(models.Model):
             for pion in pion.get_descendants():
                 s.add(pion)
         return s
+
+    def priorytet_pionu(self, dzien, pion):
+
+        priorytet = self.priorytet_set.filter(
+            Q(start__range=(dzien, dzien)) |
+            Q(koniec__range=(dzien, dzien)) |
+            Q(start__lt=dzien, koniec__gt=dzien)
+        ).first()
+
+        if priorytet is not None:
+            s = set()
+            for p in priorytet.piony.all():
+                s.add(p)
+                for p in p.get_descendants():
+                    s.add(p)
+
+            if pion in s:
+                return priorytet.priorytet
+
+        return self.priorytet_bazowy

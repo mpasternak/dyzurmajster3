@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import timedelta
 from uuid import uuid4
 
@@ -256,6 +257,7 @@ def dostepni_pracownicy(dzien, grafik):
                 Q(start__lt=dzien, koniec__gt=dzien)
             )
             yield (zp, False, const.URLOP, urlop)
+            continue
         except Urlop.DoesNotExist:
             pass
 
@@ -265,7 +267,7 @@ def dostepni_pracownicy(dzien, grafik):
         for z in zp.zyczeniaszczegolowe_set.filter(miesiac_i_rok=miesiac):
             if dzien.day in z.dni():
                 found = True
-                yield (zp, True, const.SZCZEGOLOWE, z)
+                yield (zp, True, const.ZYCZENIE, z)
                 break
 
         if found:
@@ -284,40 +286,40 @@ def dostepni_pracownicy(dzien, grafik):
             attr = "dzien_%i" % n
             if getattr(z, attr):
                 # Ta reguła ma zastosowanie do tego dnia tygodnia 'dzien'
-                yield (zp, z.dostepny, const.OGOLNE, z)
-                break
+                yield (zp, True, const.ZYCZENIE, z)
 
 
-def czy_moglby_wziac(pion, dzien, pracownicy, grafik):
+def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
     """Zwraca listę osób z listy pracownicy (zp, status, const.PRZYCZNA, obiekt),
     które mogą wziąć ten pion w danym dniu wobec konkretnego grafiku. """
 
-    for zp, moze, typ_zyczenia, zyczenie in pracownicy:
-        if not moze:
-            # Ten użytkownik NIE może wziąć tego dnia nic
-            yield (zp, False, typ_zyczenia, zyczenie)
-            continue
-
+    for zp in w_pracy:
         # Ten użytkownik może wziąć coś tego dnia, sprawdźmy, czy ten pion:
         if pion not in zp.wszystkie_dozwolone_piony():
             # Ten użytkownik nie ma przypisania do tego pionu
             yield (zp, False, const.BRAK_PRZYPISANIA, pion)
             continue
 
-        # Ten użytkownik ma ogólne przypisanie do tego pionu. Sprawdźmy,
-        # czy to życzenie konkretnie tego pionu dotyczy:
-        if zyczenie.pion is not None:
-            if pion == zyczenie.pion:
-                # Jeżeli w tym konkretnym pionie ma go NIE być, to nie:
-                if not getattr(zyczenie, 'dostepny', True):
-                    yield (zp, False, const.ZGLOSZONY_NIEDOSTEPNY_KONKRETNY_PION, zyczenie)
-                    continue
+        dopasowanie = False
+        for zyczenie in zp.zyczeniaszczegolowe_set.all():
+            if zyczenie.relevant(pion, dzien):
+                dopasowanie = True
+                break
 
-        if zyczenie.rodzaj_pionu is not None:
-            if pion.rodzaj == zyczenie.rodzaj_pionu:
-                if not getattr(zyczenie, 'dostepny', True):
-                    yield (zp, False, const.ZGLOSZONY_NIEDOSTEPNY_RODZAJ_PIONU, zyczenie)
-                    continue
+        if not dopasowanie:
+            for zyczenie in zp.zyczeniaogolne_set.all().order_by("-kolejnosc"):
+                if zyczenie.relevant(pion, dzien):
+                    dopasowanie = True
+                    break
+
+        if not dopasowanie:
+            yield (zp, False, const.NIEDOPASOWANE, None)
+
+        # Jeżeli mamy adekwatne do pionu/daty życzenie i mówi ono, ze
+        # użytkownik NIE jest wówczas dostępny, to nie sprawdzaj, ile
+        # pracował itp itd, tylko w tym momencie zwróć, że nie:
+        if not getattr(zyczenie, 'dostepny', True):
+            yield (zp, False, const.OGOLNE, zyczenie)
 
         # sprawdź maks_godzin_ciaglej_pracy
         gcp = godziny_ciaglej_pracy(pion.rodzaj, dzien, zp, grafik)
@@ -381,11 +383,7 @@ def czy_moglby_wziac(pion, dzien, pracownicy, grafik):
                         yield (zp, False, const.MAKS_DYZURY_ZWYKLE_W_MIESIACU, n)
                         continue
 
-        if not hasattr(zyczenie, 'dostepny'):
-            yield (zp, True, const.SZCZEGOLOWE, zyczenie)
-            continue
-
-        yield (zp, zyczenie.dostepny, const.OGOLNE, zyczenie)
+        yield (zp, True, const.ZYCZENIE, zyczenie)
 
 
 class Grafik(models.Model):
@@ -394,37 +392,97 @@ class Grafik(models.Model):
 
     def uloz(self, start, koniec):
 
-        # TODO: 2) popatrz na ich priorytety pionów
-        # TODO: 3) rozpisz lekarzy wg priorytetów, kto co bardziej chce i kocha
-
         for dzien in daterange(start, koniec):
 
             piony = dostepne_piony(dzien)
+            na_urlopie = Urlop.objects.filter(
+                Q(start__range=(dzien, dzien)) |
+                Q(koniec__range=(dzien, dzien)) |
+                Q(start__lt=dzien, koniec__gt=dzien)
+            ).values_list("parent__user_id")
+
+            # W tym momencie pracownicy to lista (zp, status, obiekt) zawierająca
+            # wszystkich pracownikow. Jezeli pracownik niedostepny, to status to False,
+            # a obiekt to np. Urlop. Jezeli pracownik dostepny, to status to True, a obiekt
+            # to pierwsze pasujące do tego dnia życzenie
             pracownicy = dostepni_pracownicy(dzien, grafik=self)
 
-            moglby = {}
-            for pion in piony:
-                moglby[pion] = czy_moglby_wziac(pion, dzien, pracownicy, grafik=self)
+            w_pracy = [pracownik for pracownik, status, przyczyna, obiekt in pracownicy if status]
 
-            raise NotImplementedError
+            rezultaty = {}
+            for pion, dostepny, przyczyna in piony:
+                if not dostepny:
+                    self.pionniepracuje_set.create(
+                        dzien=dzien,
+                        przyczyna=przyczyna
+                    )
+                    continue
+                lista = list(czy_moglby_wziac(pion, dzien, w_pracy, grafik=self))
+                rezultaty[pion] = lista
 
-    pass
+            dostepni = {}
+            for pion, rezultat in rezultaty.items():
+                # rezultat: tuple(zp, status, przyczyna, obiekt)
+                dostepni[pion] = [zp for zp, status, przyczyna, obiekt in rezultat if status]
+
+            # Na ile mozliwych pionow mozna rozpisac danego lekarza
+            mozliwosci = defaultdict(int)
+            for zps in dostepni.values():
+                for zp in zps:
+                    mozliwosci[zp] += 1
+
+            for pion in dostepni.keys():
+                dostepni[pion].sort(key=lambda obj: (mozliwosci[obj], obj.priorytet_pionu(dzien, pion)))
+
+            kolejnosc_pionow = [pion for pion in dostepni.keys()]
+            kolejnosc_pionow.sort(key=lambda obj: obj.priorytet)
+
+            rozpisani = set()
+            for pion in kolejnosc_pionow:
+                pracownicy = dostepni.get(pion)
+                if not pracownicy:
+                    continue
+                for pracownik in pracownicy:
+                    if pracownik in rozpisani:
+                        continue
+
+                    self.wpis_set.create(
+                        user=pracownik.user,
+                        dzien=dzien,
+                        pion=pion
+                    )
+                    rozpisani.add(pracownik.user)
+                    break
 
 
 class BazaWpisuGrafika(models.Model):
     grafik = models.ForeignKey(Grafik, models.CASCADE)
     dzien = models.DateField(db_index=True)
+
+    zmodyfikowano = models.DateTimeField(auto_now=True)
+
+
+    class Meta:
+        abstract = True
+
+
+class BazaWpisuUzytkownika(BazaWpisuGrafika):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE)
 
     class Meta:
         abstract = True
 
 
-class Wolne(BazaWpisuGrafika):
+class PionNiePracuje(BazaWpisuGrafika):
+    pion = models.ForeignKey(Pion, models.CASCADE)
     przyczyna = models.CharField(max_length=100)
 
 
-class Wpis(BazaWpisuGrafika):
+class Wolne(BazaWpisuUzytkownika):
+    przyczyna = models.CharField(max_length=100)
+
+
+class Wpis(BazaWpisuUzytkownika):
     pion = models.ForeignKey(Pion, models.CASCADE)
     template = models.TextField(
         default=None, blank=True, null=True,
@@ -462,7 +520,10 @@ class Wpis(BazaWpisuGrafika):
             return Template(self.template).render(
                 Context(dict(user=self.user, dzien=self.dzien, pion=self.pion)))
 
-        return f"{self.user.last_name}{spacja_inicjal_z_kropka(self.user.first_name)}"
+        ret = f"{self.user.last_name}{spacja_inicjal_z_kropka(self.user.first_name)}"
+        if not ret:
+            ret = f"{self.user}"
+        return ret
 
     class Meta:
         unique_together = [

@@ -83,3 +83,5 @@ def grafik(db, nowy_rok):
 @pytest.mark.django_db
 def wpis(grafik, pion, admin_user):
     return Wpis.objects.create(user=admin_user, grafik=grafik, pion=pion, dzien=date(2019, 1, 1))
+
+
