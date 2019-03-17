@@ -76,7 +76,7 @@ def luty():
 
 @pytest.fixture
 def grafik(db, nowy_rok):
-    return Grafik.objects.create(miesiac=nowy_rok)
+    return Grafik.objects.create(nazwa="Testowy")
 
 
 @pytest.fixture
