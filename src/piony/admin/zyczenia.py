@@ -1,3 +1,4 @@
+from adminsortable2.admin import SortableInlineAdminMixin
 from django import forms
 from django.contrib import admin
 
@@ -31,10 +32,11 @@ class OgraniczPionyMixin:
         return field
 
 
-class ZyczeniaOgolneInline(OgraniczPionyMixin, admin.TabularInline):
+class ZyczeniaOgolneInline(SortableInlineAdminMixin, OgraniczPionyMixin, admin.TabularInline):
     model = ZyczeniaOgolne
     fields = ['adnotacja', 'start', 'koniec', 'rodzaj_pionu', 'pion',
-              'dostepny', 'dzien_1', 'dzien_2', 'dzien_3', 'dzien_4', 'dzien_5', 'dzien_6', 'dzien_7']
+              'dostepny', 'dzien_1', 'dzien_2', 'dzien_3', 'dzien_4', 'dzien_5',
+              'dzien_6', 'dzien_7', 'ilosc_zastosowan']
     extra = 0
 
 

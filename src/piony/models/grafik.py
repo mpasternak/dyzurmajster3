@@ -49,6 +49,7 @@ def ile_robil_czy_mial_dobe(dzien, zp, grafik):
 class SwietoError(ValueError):
     pass
 
+
 class NieznanyRodzajPionu(ValueError):
     pass
 
@@ -80,7 +81,7 @@ def ostatnio_pracowal_godzin_temu(chce_rozpisac, dzis, zp, grafik, delta=1):
         if ile_robil == 8:
             return 16
         if ile_robil == 0:
-            return const.PONAD_24_GODZINY # formalnie to 25, ale chodzi o symbol
+            return const.PONAD_24_GODZINY  # formalnie to 25, ale chodzi o symbol
 
 
 def godziny_ciaglej_pracy(chce_rozpisac, dzis, zp, grafik):
@@ -278,26 +279,29 @@ def dostepni_pracownicy(dzien, grafik):
                 Q(start__lte=dzien, koniec=None) |
 
                 Q(start__lte=dzien, koniec__gte=dzien)
-        ):
+        ).order_by('-kolejnosc'):
             n = dzien.isoweekday()
             attr = "dzien_%i" % n
             if getattr(z, attr):
                 # Ta reguła ma zastosowanie do tego dnia tygodnia 'dzien'
                 yield (zp, z.dostepny, const.OGOLNE, z)
+                break
 
 
-def moglby_wziac(pion, dzien, pracownicy, grafik):
-    """Zwraca listę osób z listy pracownicy (zp, status, przyczyna, obiekt),
+def czy_moglby_wziac(pion, dzien, pracownicy, grafik):
+    """Zwraca listę osób z listy pracownicy (zp, status, const.PRZYCZNA, obiekt),
     które mogą wziąć ten pion w danym dniu wobec konkretnego grafiku. """
 
     for zp, moze, typ_zyczenia, zyczenie in pracownicy:
         if not moze:
             # Ten użytkownik NIE może wziąć tego dnia nic
+            yield (zp, False, typ_zyczenia, zyczenie)
             continue
 
         # Ten użytkownik może wziąć coś tego dnia, sprawdźmy, czy ten pion:
         if pion not in zp.wszystkie_dozwolone_piony():
             # Ten użytkownik nie ma przypisania do tego pionu
+            yield (zp, False, const.BRAK_PRZYPISANIA, pion)
             continue
 
         # Ten użytkownik ma ogólne przypisanie do tego pionu. Sprawdźmy,
@@ -306,37 +310,44 @@ def moglby_wziac(pion, dzien, pracownicy, grafik):
             if pion == zyczenie.pion:
                 # Jeżeli w tym konkretnym pionie ma go NIE być, to nie:
                 if not getattr(zyczenie, 'dostepny', True):
+                    yield (zp, False, const.ZGLOSZONY_NIEDOSTEPNY_KONKRETNY_PION, zyczenie)
                     continue
 
         if zyczenie.rodzaj_pionu is not None:
             if pion.rodzaj == zyczenie.rodzaj_pionu:
                 if not getattr(zyczenie, 'dostepny', True):
+                    yield (zp, False, const.ZGLOSZONY_NIEDOSTEPNY_RODZAJ_PIONU, zyczenie)
                     continue
 
         # sprawdź maks_godzin_ciaglej_pracy
         gcp = godziny_ciaglej_pracy(pion.rodzaj, dzien, zp, grafik)
         if gcp > zp.maks_godzin_ciaglej_pracy:
+            yield (zp, False, const.PRZEKROCZONY_CZAS_CIAGLEJ_PRACY, gcp)
             continue
 
         # sprawdź kiedy ostatnio pracował pod kątem rozpisania w dany pion:
         opgt = ostatnio_pracowal_godzin_temu(pion.rodzaj, dzien, zp, grafik) or 24
         if opgt < zp.min_odpoczynek_po_ciaglej_pracy:
+            yield (zp, False, const.ZBYT_MALY_ODPOCZYNEK, opgt)
             continue
 
         if pion.rodzaj == const.DZIENNY:
 
             n = ostatnia_dniowka_dni_temu(dzien, zp, grafik)
             if n is not None and n < zp.dniowka_co_ile_dni:
+                yield (zp, False, const.DNIOWKA_ZA_WCZESNIE, n)
                 continue
 
             if zp.maks_dniowki is not None:
                 n = dniowek_w_miesiacu(dzien, zp, grafik)
                 if n >= zp.maks_dniowki:
+                    yield (zp, False, const.MAKS_DNIOWKI_W_MIESIACU, n)
                     continue
 
             if zp.maks_dniowki_w_tygodniu is not None:
                 n = dniowek_w_tygodniu(dzien, zp, grafik)
                 if n >= zp.maks_dniowki_w_tygodniu:
+                    yield (zp, False, const.MAKS_DNIOWKI_W_TYGODNIU, n)
                     continue
 
         elif pion.rodzaj == const.NOCNYSWIATECZNY:
@@ -344,29 +355,37 @@ def moglby_wziac(pion, dzien, pracownicy, grafik):
             if zp.maks_dyzury is not None:
                 n = dyzurow_w_miesiacu(dzien, zp, grafik)
                 if n >= zp.maks_dyzury:
+                    yield (zp, False, const.MAKS_DYZURY_W_MIESIACU, n)
                     continue
 
             n = ostatni_dyzur_dni_temu(dzien, zp, grafik)
             if n is not None and n < zp.dyzur_co_ile_dni:
+                yield (zp, False, const.DYZUR_ZA_WCZESNIE, n)
                 continue
 
             # sprawdz nie_dyzuruje_z
             if sprawdz_nie_dyzuruje_z(dzien, zp, grafik, pion.rodzaj) is True:
+                yield (zp, False, const.NIE_DYZURUJE_Z, zp.nie_dyzuruje_z)
                 continue
 
             if Holiday.objects.is_holiday(dzien):
                 if zp.maks_dobowe is not None:
                     n = dobowych_w_miesiacu(dzien, zp, grafik)
                     if n >= zp.maks_dobowe:
+                        yield (zp, False, const.MAKS_DYZURY_DOBOWE_W_MIESIACU, n)
                         continue
             else:
                 if zp.maks_zwykle is not None:
                     n = zwyklych_w_miesiacu(dzien, zp, grafik)
                     if n >= zp.maks_zwykle:
+                        yield (zp, False, const.MAKS_DYZURY_ZWYKLE_W_MIESIACU, n)
                         continue
 
-        if getattr(zyczenie, 'dostepny', True):
-            yield zp
+        if not hasattr(zyczenie, 'dostepny'):
+            yield (zp, True, const.SZCZEGOLOWE, zyczenie)
+            continue
+
+        yield (zp, zyczenie.dostepny, const.OGOLNE, zyczenie)
 
 
 class Grafik(models.Model):
@@ -385,7 +404,7 @@ class Grafik(models.Model):
 
             moglby = {}
             for pion in piony:
-                moglby[pion] = moglby_wziac(pion, dzien, pracownicy, grafik=self)
+                moglby[pion] = czy_moglby_wziac(pion, dzien, pracownicy, grafik=self)
 
             raise NotImplementedError
 

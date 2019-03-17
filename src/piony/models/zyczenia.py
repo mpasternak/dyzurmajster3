@@ -75,6 +75,8 @@ class ZyczeniaSzczegolowe(BazaZyczen):
             self.miesiac_i_rok
         )
 
+        # TODO: sprawdź, czy nie ma nachodzących na siebie okresów zdefiniowanych w bazie
+
     class Meta:
         verbose_name = 'życzenie szczegółówe'
         verbose_name_plural = 'życzenia szczegółowe'
@@ -102,12 +104,15 @@ class ZyczeniaOgolne(BazaZyczen):
         help_text="Ile razy ta reguła ma być spełniona podczas trwania jej czasokresu. Czyli np. "
                   "'maksymalnie 2 dyżury od 1go do 15go'. ")
 
+    kolejnosc = models.PositiveSmallIntegerField(default=0, blank=False, null=False)
+
     def __str__(self):
         return f"Życzenie {self.adnotacja} dla {self.parent.user}"
 
     class Meta:
         verbose_name_plural = 'życzenia ogólne'
         verbose_name = 'życzenie ogólne'
+        ordering = ['kolejnosc']
 
 
 class ZyczeniaPracownika(models.Model):

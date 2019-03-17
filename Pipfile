@@ -10,13 +10,13 @@ django-db-constraints = "*"
 "psycopg2-binary" = "*"
 workalendar = "*"
 django-extensions = "*"
+django-admin-sortable2 = "*"
 
 [dev-packages]
 pytest = "*"
 pytest-django = "*"
 pytest-pythonpath = "*"
 model-mommy = "*"
-
 
 [requires]
 python_version = "3.6"

@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from model_mommy import mommy
 
 from piony import const
-from piony.models import Wpis, dostepni_pracownicy, moglby_wziac, godziny_ciaglej_pracy, ile_robil_czy_mial_dobe, \
+from piony.models import Wpis, dostepni_pracownicy, czy_moglby_wziac, godziny_ciaglej_pracy, ile_robil_czy_mial_dobe, \
     robil_w_dzien, ostatnio_pracowal_godzin_temu, ostatnia_dniowka_dni_temu, dniowek_w_miesiacu, dniowek_w_tygodniu, \
     poczatek_tygodnia, koniec_tygodnia, dyzurow_w_miesiacu, ostatni_dyzur_dni_temu, ZyczeniaPracownika, \
     sprawdz_nie_dyzuruje_z, dni_swiateczne_w_miesiacu, dni_powszednie_w_miesiacu, dobowych_w_miesiacu, \
@@ -80,6 +80,17 @@ def dyzurant(zp, pion_nocny):
         adnotacja="Ciagly dyzur",
         rodzaj_pionu=const.NOCNYSWIATECZNY
     )
+    return zp
+
+
+@pytest.fixture
+def etatowy(zp, pion_dzienny):
+    zp.dozwolone_piony.add(pion_dzienny)
+    zp.zyczeniaogolne_set.create(
+        adnotacja="Etat!",
+        rodzaj_pionu=const.DZIENNY
+    )
+    return zp
 
 
 def test_poczatek_tygodnia(poniedzialek, wtorek, sroda, czwartek, niedziela):
@@ -165,10 +176,166 @@ def test_dniowek_w_tygodniu(wtorek, sroda, czwartek, pion_dzienny, pion_nocny, z
     assert dniowek_w_tygodniu(wtorek, zp, grafik) == 2
 
 
-def test_moglby_wziac(dyzurant, pion_nocny, nowy_rok):
-    dp = dostepni_pracownicy(nowy_rok, grafik=None)
-    lst = moglby_wziac(pion_nocny, nowy_rok, dp, grafik=None)
-    raise NotImplementedError
+def oni_mogliby_wziac(pion, dzien, grafik=None):
+    dp = dostepni_pracownicy(dzien, grafik=grafik)
+    return list(czy_moglby_wziac(pion, dzien, dp, grafik=grafik))
+
+
+def czy_dyzurant_wezmie(dyzurant, dzien, pion, grafik=None):
+    lista = oni_mogliby_wziac(pion, dzien, grafik)
+    for zp, moze, przyczyna, obiekt in lista:
+        if zp == dyzurant:
+            return zp, moze, przyczyna, obiekt
+
+
+def test_czy_moglby_wziac(dyzurant, pion_nocny, nowy_rok):
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
+    assert moze
+
+
+def test_czy_moglby_wziac_brak_przypisania(dyzurant, pion_dzienny, sroda):
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny)
+    assert not moze
+    assert przyczyna == const.BRAK_PRZYPISANIA
+
+
+def test_czy_moglby_wziac_przekroczony_czas_pracy(grafik, dyzurant, nowy_rok, sroda, pion_nocny, pion_dzienny):
+    dyzurant.maks_godzin_ciaglej_pracy = 32
+    dyzurant.dozwolone_piony.add(pion_dzienny)
+    dyzurant.save()
+
+    grafik.wpis_set.create(
+        user=dyzurant.user,
+        pion=pion_nocny,
+        dzien=nowy_rok
+    )
+
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny, grafik)
+    assert moze
+
+    dyzurant.maks_godzin_ciaglej_pracy = 24
+    dyzurant.save()
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny, grafik)
+    assert not moze
+    assert przyczyna == const.PRZEKROCZONY_CZAS_CIAGLEJ_PRACY
+
+
+def test_czy_moglby_wziac_zbyt_maly_odpoczynek(grafik, dyzurant, nowy_rok, sroda, czwartek, pion_nocny, pion_dzienny):
+    dyzurant.min_odpoczynek_po_ciaglej_pracy = 11
+    dyzurant.dozwolone_piony.add(pion_dzienny)
+    dyzurant.save()
+
+    grafik.wpis_set.create(
+        user=dyzurant.user,
+        pion=pion_nocny,
+        dzien=nowy_rok
+    )
+
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny, grafik)
+    assert not moze
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, czwartek, pion_dzienny, grafik)
+    assert moze
+
+    dyzurant.min_odpoczynek_po_ciaglej_pracy = 24
+    dyzurant.save()
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny, grafik)
+    assert not moze
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, czwartek, pion_dzienny, grafik)
+    assert moze
+
+    dyzurant.min_odpoczynek_po_ciaglej_pracy = 30
+    dyzurant.save()
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_dzienny, grafik)
+    assert not moze
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, czwartek, pion_dzienny, grafik)
+    assert not moze
+
+
+def test_czy_moglby_wziac_nieodstepny_w_tym_pionie_oglne_1(dyzurant, pion_nocny, nowy_rok):
+    dyzurant.zyczeniaogolne_set.create(
+        start=nowy_rok,
+        koniec=nowy_rok,
+        dostepny=False,
+        adnotacja="Nie moze w nowy rok",
+        kolejnosc=1
+    )
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
+    assert not moze
+    assert przyczyna == const.OGOLNE
+
+
+def test_czy_moglby_wziac_nieodstepny_w_tym_pionie_oglne_2(dyzurant, pion_nocny, nowy_rok):
+    dyzurant.zyczeniaogolne_set.create(
+        pion=pion_nocny,
+        dostepny=False,
+        kolejnosc=1
+    )
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
+    assert not moze
+    assert przyczyna == const.OGOLNE
+
+
+def test_czy_moglby_wziac_ogolnie_nieodstepny_w_tym_pionie_ale_jest_szczegolowe(dyzurant, pion_nocny, nowy_rok):
+    dyzurant.zyczeniaogolne_set.create(
+        start=nowy_rok,
+        koniec=nowy_rok,
+        dostepny=False,
+        kolejnosc=1
+    )
+
+    dyzurant.zyczeniaszczegolowe_set.create(
+        pion=pion_nocny,
+        miesiac_i_rok=nowy_rok,
+        lista_dni="1"
+    )
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
+    assert moze
+    assert przyczyna == const.SZCZEGOLOWE
+
+
+def test_czy_moglby_wziac_przekroczone_dniowki(zp, etatowy, pion_dzienny, sroda):
+    etatowy.maks_dniowki = 0
+    etatowy.save()
+
+    etatowy, moze, przyczyna, obiekt = czy_dyzurant_wezmie(etatowy, sroda, pion_dzienny)
+    assert not moze
+    assert przyczyna == const.MAKS_DNIOWKI_W_MIESIACU
+
+
+def test_czy_moglby_wziac_przekroczone_dniowki_w_tygodniu(zp, etatowy, pion_dzienny, sroda):
+    etatowy.maks_dniowki_w_tygodniu = 0
+    etatowy.save()
+
+    etatowy, moze, przyczyna, obiekt = czy_dyzurant_wezmie(etatowy, sroda, pion_dzienny)
+    assert not moze
+    assert przyczyna == const.MAKS_DNIOWKI_W_TYGODNIU
+
+
+def test_czy_moglby_wziac_przekroczone_dyzury(zp, dyzurant, pion_nocny, nowy_rok):
+    dyzurant.maks_dyzury = 0
+    dyzurant.save()
+
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
+    assert not moze
+    assert przyczyna == const.MAKS_DYZURY_W_MIESIACU
+
+
+def test_czy_moglby_wziac_przekroczone_dobowe(zp, dyzurant, pion_nocny, nowy_rok):
+    dyzurant.maks_dobowe = 0
+    dyzurant.save()
+
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
+    assert not moze
+    assert przyczyna == const.MAKS_DYZURY_DOBOWE_W_MIESIACU
+
+
+def test_czy_moglby_wziac_przekroczone_zwykle(zp, dyzurant, pion_nocny, sroda):
+    dyzurant.maks_zwykle = 0
+    dyzurant.save()
+
+    dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, sroda, pion_nocny)
+    assert not moze
+    assert przyczyna == const.MAKS_DYZURY_ZWYKLE_W_MIESIACU
 
 
 def test_Grafik_uloz(grafik, pion_dzienny, pion_nocny, zp, nowy_rok, luty):
