@@ -7,7 +7,7 @@ from mptt.models import MPTTModel
 from core.helpers import SprawdzZakresyMixin
 from holidays.models import Holiday
 from piony import const
-
+from django.conf import settings
 
 class PatchedTreeManager(TreeManager):
     # wszystkie leafnodes
@@ -88,3 +88,14 @@ class PrzerwaWPracyPionu(SprawdzZakresyMixin, models.Model):
     class Meta:
         verbose_name = 'przerwa w pracy pionu'
         verbose_name_plural = 'przerwy w pracy pionu'
+
+
+# class KolejnoscPracownikaWPionie(models.Model):
+#     parent = models.ForeignKey(Pion, models.CASCADE)
+#     pracownik = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE)
+#     kolejnosc = models.PositiveSmallIntegerField(default=0, blank=False, null=False)
+#
+#     class Meta:
+#         ordering = ['kolejnosc',]
+#         verbose_name = 'kolejność pracownika w pionie'
+#         verbose_name_plural = 'kolejności pracowników w pionach'

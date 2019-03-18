@@ -13,4 +13,4 @@ class ElementWydrukuInline(SortableInlineAdminMixin, admin.TabularInline):
 class WydrukAdmin(admin.ModelAdmin):
     inlines = [ElementWydrukuInline, ]
     fields = ['kod', 'nazwa', 'rodzaj']
-    list_fields = ['kod', 'nazwa', 'rodzaj']
+    list_display = ['kod', 'nazwa', 'rodzaj']

@@ -1,7 +1,8 @@
 from collections import defaultdict
-from datetime import timedelta, date
+from datetime import timedelta
 from uuid import uuid4
 
+import progressbar
 from dateutil import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -297,9 +298,6 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
 
     for zp in w_pracy:
         # Ten użytkownik może wziąć coś tego dnia, sprawdźmy, czy ten pion:
-
-        if dzien == date(2019, 4, 6) and zp.user.username == 'bgdula':
-            print("X")
         if pion not in zp.wszystkie_dozwolone_piony():
             # Ten użytkownik nie ma przypisania do tego pionu
             yield (zp, False, const.BRAK_PRZYPISANIA, pion)
@@ -328,6 +326,7 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
         # pracował itp itd, tylko w tym momencie zwróć, że nie:
         if not getattr(zyczenie, 'dostepny', True):
             yield (zp, False, const.OGOLNE, zyczenie)
+            continue
 
         # sprawdź maks_godzin_ciaglej_pracy
         gcp = godziny_ciaglej_pracy(pion.rodzaj, dzien, zp, grafik)
@@ -434,7 +433,12 @@ class Grafik(models.Model):
 
     def uloz(self, start, koniec):
 
-        for dzien in daterange(start, koniec):
+        for kolejny_dzien in progressbar.progressbar(
+                range((koniec - start).days + 1),
+                widgets=[progressbar.Bar(), " ",
+                         progressbar.Timer(), " ",
+                         progressbar.ETA()]):
+            dzien = start + timedelta(days=kolejny_dzien)
             piony = list(dostepne_piony(dzien))
             posortowane_piony = [pion for pion, status, przyczyna in piony if status]
             posortowane_piony.sort(key=lambda pion: pion.priorytet)
@@ -485,7 +489,7 @@ class Grafik(models.Model):
                 self.wolne_set.create(
                     user=user,
                     dzien=dzien,
-                    przyczyna="po dyż"
+                    przyczyna="po dyżurze"
                 )
 
             dostepni = {}
@@ -499,9 +503,27 @@ class Grafik(models.Model):
                 for zp in zps:
                     mozliwosci[zp] += 1
 
-            for pion in dostepni.keys():
-                dostepni[pion].sort(
-                    key=lambda obj: (obj.priorytet_pionu(dzien, pion), mozliwosci[obj]))
+            def sortFunkcja(pion, dzien, obj):
+                if pion.rodzaj == const.NOCNYSWIATECZNY:
+                    # Kto ma więcej dyżurów ten NA KONIEC KOLEJKI
+                    ost_dyz = 50 - (ostatni_dyzur_dni_temu(dzien, obj, grafik=self) or 0)
+                    dyz_w_mc = dyzurow_w_miesiacu(dzien, obj, grafik=self)
+                    return (dyz_w_mc, ost_dyz, obj.priorytet_pionu(dzien, pion), mozliwosci[obj])
+                else:
+                    return (obj.priorytet_pionu(dzien, pion), mozliwosci[obj])
+
+            kolejkaDump = {}
+            for pion in dostepni:
+                sortWartosci = dict(
+                    [(obj, sortFunkcja(pion, dzien, obj)) for obj in dostepni[pion]]
+                )
+                # dostepni[pion].sort(key=lambda obj: sortFunkcja(pion, dzien, obj))
+                dostepni[pion].sort(key=lambda obj: sortWartosci[obj])
+
+                dump = f"Posortowana lista chętnych do {pion} na {dzien}"
+                for obj in dostepni[pion]:
+                    dump += f"\n\t{obj.user} {sortWartosci[obj]}"
+                kolejkaDump[pion] = dump
 
             for rodzaj in const.DZIENNY, const.NOCNYSWIATECZNY:
                 tr = TrackerRozpisan()
@@ -512,7 +534,7 @@ class Grafik(models.Model):
                     tr.wszyscy = set(pracownicy)
 
                     if not pracownicy:
-                        print(pion, "brak obsady")
+                        # print(pion, "brak obsady")
                         continue
 
                     for pracownik in pracownicy:
@@ -522,9 +544,10 @@ class Grafik(models.Model):
                         w = self.wpis_set.create(
                             user=pracownik.user,
                             dzien=dzien,
-                            pion=pion
+                            pion=pion,
+                            kolejkaDump=kolejkaDump[pion]
                         )
-                        print(pion, w.user)
+                        # print(pion, w.user)
                         tr.rozpisz(pion, pracownik)
                         break
 
@@ -536,14 +559,14 @@ class Grafik(models.Model):
                                 dzien=dzien,
                                 pion=self.pion_dla_nierozpisanych
                             )
-                            print("nierozpisany", nierozpisany.user, "=>", self.pion_dla_nierozpisanych)
-                            continue
+                            # print("nierozpisany", nierozpisany.user, "=>", self.pion_dla_nierozpisanych)
 
-                        self.nierozpisany_set.create(
-                            user=nierozpisany.user,
-                            dzien=dzien
-                        )
-                        print("nierozpisany", nierozpisany.user)
+                        else:
+                            self.nierozpisany_set.create(
+                                user=nierozpisany.user,
+                                dzien=dzien
+                            )
+                            # print("nierozpisany", nierozpisany.user)
 
     def wyczysc_wpisy(self, start, koniec):
         for rec_set in [self.wpis_set, self.pionniepracuje_set, self.wolne_set, self.nierozpisany_set]:
@@ -588,6 +611,8 @@ class Wpis(BazaWpisuUzytkownika):
         default=None, blank=True, null=True,
         help_text="""{{user.last_name}} {{user.first_name|first|capfirst}}""")
 
+    kolejkaDump = models.TextField(blank=True, null=True)
+
     @cached_property
     def ile_godzin(self):
         if self.pion.rodzaj == const.NOCNYSWIATECZNY:
@@ -629,15 +654,17 @@ class Wpis(BazaWpisuUzytkownika):
         ]
         verbose_name_plural = 'wpisy'
 
+
 def dzienne():
     raise NotImplementedError
-nocneswiateczne = dzienne
 
+
+nocneswiateczne = dzienne
 
 
 class ZestawiajRazem(models.Model):
     parent = models.ForeignKey(Grafik, models.CASCADE)
     dzienny = TreeForeignKey(Pion, models.CASCADE, limit_choices_to={"rodzaj": const.DZIENNY}, related_name="+")
     nocnyswiateczny = TreeForeignKey(Pion, models.CASCADE,
-                                        limit_choices_to={"rodzaj": const.NOCNYSWIATECZNY},
-                                        related_name="+")
+                                     limit_choices_to={"rodzaj": const.NOCNYSWIATECZNY},
+                                     related_name="+")

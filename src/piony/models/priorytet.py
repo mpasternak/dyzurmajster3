@@ -1,10 +1,7 @@
-from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models import Q
 from mptt.fields import TreeManyToManyField
 
-from core.helpers import SprawdzZakresyMixin
 from .pion import Pion
 from .zyczenia import ZyczeniaPracownika
 
@@ -21,12 +18,15 @@ class Priorytet(models.Model):
     ])
     adnotacja = models.CharField(max_length=100, blank=True, null=True)
 
+    kolejnosc = models.PositiveSmallIntegerField(default=0, blank=False, null=False)
+
     class Meta:
         verbose_name = "priorytet"
         verbose_name_plural = "priorytety"
+        ordering = ['kolejnosc', ]
 
     def __str__(self):
-        b = f"{self.parent.user}  ma priorytet {self.priorytet} {self.adnotacja or ''} od {self.start}"
+        b = f"{self.parent.user}  ma priorytet {self.priorytet} {self.adnotacja or ''} od {self.start} (nr {self.kolejnosc})"
         if self.koniec is not None:
             b += f" do {self.koniec}"
         return b

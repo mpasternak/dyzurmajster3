@@ -167,6 +167,8 @@ class ZyczeniaOgolne(BazaZyczen):
 class ZyczeniaPracownika(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
+    adnotacje = models.TextField(null=True, blank=True)
+
     dozwolone_piony = TreeManyToManyField(Pion, related_name="+")
 
     dniowka_co_ile_dni = models.PositiveIntegerField(
@@ -245,10 +247,19 @@ class ZyczeniaPracownika(models.Model):
         for priorytet in self.priorytet_set.filter(
                 Q(start__range=(dzien, dzien)) |
                 Q(koniec__range=(dzien, dzien)) |
-                Q(start__lt=dzien, koniec__gt=dzien)):
+                Q(start__lt=dzien, koniec__gt=dzien)
+        ).order_by('kolejnosc'):
 
+            # Znalazł się jeden wpis dla takiego zakresu dat;
+            # Czy poszukiwany pion wchodzi w jego skład?
             for elem in [pion.get_descendants(include_self=True) for pion in priorytet.piony.all()]:
                 if pion in elem:
                     return priorytet.priorytet
 
+            # Nie wchodzi. Zwróć bazowy priorytet, powiększony o priorytet
+            # tego pionu, aby w innych pionach w których brakuje priorytetyzacji
+            # opóźnić użytkownika w stosunku do priorytetu bazowego
+            return self.priorytet_bazowy + (100 - priorytet.priorytet)
+
+        # Brak priorytetów. Zwróć bazowy priorytet
         return self.priorytet_bazowy

@@ -1,9 +1,10 @@
 from django.core.management import BaseCommand
-from django.core.management import BaseCommand
 from django.db import transaction
 
-from piony.models import Grafik, Wydruk
+from piony.models import Grafik, Wydruk, ZyczeniaPracownika
 
+import locale
+locale.setlocale(locale.LC_ALL, '')
 
 class Command(BaseCommand):
     def add_arguments(self, parser):
@@ -16,16 +17,3 @@ class Command(BaseCommand):
         grafik = Grafik.objects.all().first()
         grafik.wyczysc_wpisy(start, koniec)
         grafik.uloz(start, koniec)
-
-        wydruk = Wydruk.objects.get(kod='DYZ-1')
-        res = wydruk.formatuj_miesieczny(start, grafik)
-
-        wydruk = Wydruk.objects.get(kod='DYZ-2')
-        res2 = wydruk.formatuj_miesieczny(start, grafik)
-
-        wydruk = Wydruk.objects.get(kod='DYZ-3')
-        res3 = wydruk.formatuj_miesieczny(start, grafik)
-
-        open("output.html", "w").write(res + "<hr>" + res2 + "<hr>" + res3)
-        import os
-        os.system("open output.html")

@@ -52,7 +52,7 @@ class UrlopInline(admin.TabularInline):
     extra = 0
 
 
-class PriorytetInline(admin.TabularInline):
+class PriorytetInline(SortableInlineAdminMixin, admin.TabularInline):
     model = Priorytet
     fields = ['start', 'koniec', 'piony', 'priorytet']
     extra = 0
@@ -92,6 +92,7 @@ class ZyczeniaPracownikaAdmin(admin.ModelAdmin):
         ('OPCJE', {
             'classes': ('collapse',),
             'fields': (
+                'adnotacje',
                 'dniowka_co_ile_dni',
                 'dyzur_co_ile_dni',
                 'maks_godzin_ciaglej_pracy',
