@@ -131,13 +131,13 @@ class Wydruk(models.Model):
             tytul = "Plan pracy na %s" % start.strftime("%b %Y")
             if user:
                 tytul += " dla " + (f"{user.first_name} {user.last_name}".strip() or user.username)
-            dane = self.dane(grafik, start=start, koniec=koniec, miesiac=miesiac, user=user)
+            dane = self.dane(grafik, start=start, koniec=koniec, user=user)
             return formatuj_miesieczny(tytul, dane)
 
         elif self.rodzaj == const.TYGODNIOWY:
             start = poczatek_tygodnia(start)
             koniec = koniec_tygodnia(koniec)
-            dane = self.dane(grafik, start=start, koniec=koniec, miesiac=miesiac, user=user)
+            dane = self.dane(grafik, start=start, koniec=koniec, user=user)
             return formatuj_tygodniowy(dane)
 
         raise NotImplementedError
