@@ -429,7 +429,7 @@ def test_Grafik_uloz(grafik, nowy_rok, luty):
         kolejnosc=4
     )
 
-    res = w.drukuj(nowy_rok, grafik)
+    res = w.drukuj(grafik, miesiac=nowy_rok)
     assert len(res) > 1
 
 

@@ -55,7 +55,7 @@ def test_priorytet_pionu(zp, pion_dzienny, pion_nocny, nowy_rok, luty):
     )
     priorytet.piony.add(pion_nocny)
 
-    assert zp.priorytet_pionu(nowy_rok, pion_dzienny) == 99
+    assert zp.priorytet_pionu(nowy_rok, pion_dzienny) == 149
     assert zp.priorytet_pionu(nowy_rok, pion_nocny) == 50
     assert zp.priorytet_pionu(luty, pion_nocny) == 50
     assert zp.priorytet_pionu(luty + timedelta(days=5), pion_nocny) == 99
