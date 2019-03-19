@@ -411,7 +411,7 @@ def test_Grafik_uloz(grafik, nowy_rok, luty):
 
     w = Wydruk.objects.create(kod='W1', rodzaj=const.MIESIECZNY)
     w.elementwydruku_set.create(
-        rodzaj=const.KOLUMNA_DZIEN,
+        rodzaj=const.KOLUMNA_DATA,
         kolejnosc=1
     )
     w.elementwydruku_set.create(
