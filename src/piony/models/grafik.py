@@ -222,6 +222,10 @@ def koniec_miesiaca(dzien):
     return poczatek_miesiaca(dzien) + relativedelta.relativedelta(day=31)
 
 
+def nastepny_miesiac(dzien):
+    return koniec_miesiaca(dzien) + timedelta(days=1)
+
+
 def sprawdz_nie_dyzuruje_z(dzien, zp, grafik, rodzaj=const.NOCNYSWIATECZNY):
     """Sprawdz, czy w dniu 'dzien' ma dyzur osoba, ktora jest wymieniona
     w zp.nie_dyzuruje_z"""

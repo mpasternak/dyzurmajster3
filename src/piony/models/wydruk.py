@@ -32,7 +32,7 @@ def zakres_dat_lub_miesiac(start=None, koniec=None, miesiac=None):
     return start, koniec
 
 
-def formatuj_miesieczny(tytul, dane):
+def formatuj_miesieczny(tytul, dane, font_size="16pt"):
     header, rows = dane
 
     ret = ""
@@ -42,12 +42,12 @@ def formatuj_miesieczny(tytul, dane):
         ret += s
 
     output(
-        "<head><meta charset=utf-8></head><body><style>* { font-family: Calibri; font-size: 16pt; } th { background: black; color: white; }</style>")
+        "<head><meta charset=utf-8></head><body><style>* { font-family: Calibri; font-size: %s; } th { background: black; color: white; }</style>" % font_size)
     output(f"<h2>{tytul}</h2>")
     output("<table border=1 cellpadding=2 cellspacing=0 bordercolor=black>")
     output("<tr>")
     for elem in header:
-        output(f"<th>{elem}</th>")
+        output(f"<th><center>{elem}</center></th>")
     output("</tr>")
     for dzien, elem in rows:
         if Holiday.objects.is_holiday(dzien):
@@ -109,6 +109,7 @@ def formatuj_tygodniowy(dane, bez_weekendow=True):
 class Wydruk(models.Model):
     kod = models.CharField(max_length=32, unique=True)
     nazwa = models.CharField(max_length=100, blank=True, null=True)
+    font_size = models.CharField("Wielkość czcionki", max_length=10, blank=True, null=True, help_text="CSS font-size; może być w pt, px, em...")
 
     rodzaj = models.PositiveSmallIntegerField(
         choices=[
@@ -132,7 +133,7 @@ class Wydruk(models.Model):
             if user:
                 tytul += " dla " + (f"{user.first_name} {user.last_name}".strip() or user.username)
             dane = self.dane(grafik, start=start, koniec=koniec, user=user)
-            return formatuj_miesieczny(tytul, dane)
+            return formatuj_miesieczny(tytul, dane, font_size=self.font_size)
 
         elif self.rodzaj == const.TYGODNIOWY:
             start = poczatek_tygodnia(start)
@@ -173,8 +174,9 @@ class ElementWydruku(models.Model):
 
     rodzaj = models.PositiveSmallIntegerField(
         choices=[
-            (const.KOLUMNA_DZIEN, "Dzień"),
+            (const.KOLUMNA_DATA, "Data"),
             (const.KOLUMNA_DZIEN_TYGODNIA, "Dzień tygodnia"),
+            (const.KOLUMNA_DZIEN_MIESIACA, "Dzień miesiąca"),
             (const.KOLUMNA_PION, "Pion"),
             (const.KOLUMNA_WOLNE, "Wolne"),
             (const.KOLUMNA_NIEROZPISANI, "Nierozpisani"),
@@ -204,7 +206,7 @@ class ElementWydruku(models.Model):
                 raise ValidationError({"pion": "Piony wpisuj tylko dla typu kolumny 'Pion'"})
 
     def header(self):
-        if self.rodzaj == const.KOLUMNA_DZIEN:
+        if self.rodzaj == const.KOLUMNA_DATA:
             return "Dzień"
         elif self.rodzaj == const.KOLUMNA_DZIEN_TYGODNIA:
             return "Dzień tygodnia"
@@ -218,15 +220,20 @@ class ElementWydruku(models.Model):
             return "Pion dzienny"
         elif self.rodzaj == const.KOLUMNA_PION_NOCNYSWIATECZNY:
             return "Pion dyżurowy"
+        elif self.rodzaj == const.KOLUMNA_DZIEN_MIESIACA:
+            return "Dzień"
 
         raise ValueError(self.rodzaj)
 
     def value(self, dzien, grafik, user=None):
-        if self.rodzaj == const.KOLUMNA_DZIEN:
+        if self.rodzaj == const.KOLUMNA_DATA:
             if Holiday.objects.is_holiday(dzien):
                 return f"<b>{dzien}</b>"
             else:
                 return f"{dzien}"
+
+        elif self.rodzaj == const.KOLUMNA_DZIEN_MIESIACA:
+            return f"<center>{dzien.day}</center>"
 
         elif self.rodzaj == const.KOLUMNA_DZIEN_TYGODNIA:
             return dzien.strftime("%A")

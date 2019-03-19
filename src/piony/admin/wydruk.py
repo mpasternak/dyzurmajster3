@@ -12,5 +12,5 @@ class ElementWydrukuInline(SortableInlineAdminMixin, admin.TabularInline):
 @admin.register(Wydruk)
 class WydrukAdmin(admin.ModelAdmin):
     inlines = [ElementWydrukuInline, ]
-    fields = ['kod', 'nazwa', 'rodzaj']
+    fields = ['kod', 'nazwa', 'rodzaj', "font_size"]
     list_display = ['kod', 'nazwa', 'rodzaj']

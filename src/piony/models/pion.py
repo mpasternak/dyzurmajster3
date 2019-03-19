@@ -99,3 +99,4 @@ class PrzerwaWPracyPionu(SprawdzZakresyMixin, models.Model):
 #         ordering = ['kolejnosc',]
 #         verbose_name = 'kolejność pracownika w pionie'
 #         verbose_name_plural = 'kolejności pracowników w pionach'
+
