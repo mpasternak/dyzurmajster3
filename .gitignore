@@ -104,3 +104,6 @@ venv.bak/
 .mypy_cache/
 /src/piony/management/commands/jbozy_initial_data.py
 *.sql
+/wygeneruj_grafiki_jbozy.sh
+/dump-2019-03-18-2
+/dump-2019-03-18
