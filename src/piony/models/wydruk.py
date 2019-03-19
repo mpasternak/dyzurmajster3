@@ -245,9 +245,9 @@ class ElementWydruku(models.Model):
                 if wolne.przyczyna.startswith("po dyż"):
                     skrot = "☾"
                 elif wolne.przyczyna == "wypoczynkowy":
-                    skrot = "☺"
+                    skrot = "☀"
                 elif wolne.przyczyna == "L4":
-                    skrot = "☤"
+                    skrot = "L4"
                 else:
                     skrot = wolne.przyczyna
 
