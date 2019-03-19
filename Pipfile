@@ -18,6 +18,8 @@ pytest = "*"
 pytest-django = "*"
 pytest-pythonpath = "*"
 model-mommy = "*"
+pytest-cov = "*"
+coveralls = "*"
 
 [requires]
 python_version = "3.6"
