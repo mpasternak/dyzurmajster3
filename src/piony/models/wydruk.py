@@ -86,11 +86,11 @@ def formatuj_tygodniowy(dane, bez_weekendow=True):
 
             for elem in range(starting_row, starting_row + 5 if bez_weekendow else 7):
                 if first_col_needed:
-                    output(f"<th valign=top align=right class=firstCol><b>{header[n_row]}</b></th>")
+                    output(f"<th WIDTH=15% valign=top align=right class=firstCol><b>{header[n_row]}</b></th>")
                     first_col_needed = False
 
                 if n_row == 0:
-                    output(f"<th valign=top>{rows[elem][1][n_row]}</th>")
+                    output(f"<th width=15% valign=top>{rows[elem][1][n_row]}</th>")
                 else:
                     output(f"<td valign=top>{rows[elem][1][n_row]}</td>")
 
