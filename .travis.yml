@@ -14,5 +14,4 @@ install:
   - pipenv install -d
 
 script:
-  - pytest
-  - coveralls
+  - pytest && coveralls
