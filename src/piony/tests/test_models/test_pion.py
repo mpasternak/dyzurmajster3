@@ -33,3 +33,54 @@ def test_dostepne_piony_przerwa(pion_dzienny, pion_nocny):
     pion, dostepny, przyczyna = r[0]
     assert not dostepny
 
+
+@pytest.mark.django_db
+def test_dostepne_piony_domyslnie_niedostepny(pion_dzienny, sroda):
+    pion_dzienny.domyslnie_dostepny = False
+    pion_dzienny.save()
+
+    r = list(dostepne_piony(dzien=sroda))
+
+    pion, dostepny, przyczyna = r[0]
+    assert not dostepny
+
+
+@pytest.mark.django_db
+def test_dostepne_piony_domyslnie_niedostepny(pion_dzienny, sroda):
+    pion_dzienny.domyslnie_dostepny = False
+    pion_dzienny.save()
+
+    r = list(dostepne_piony(dzien=sroda))
+
+    pion, dostepny, przyczyna = r[0]
+    assert not dostepny
+
+
+@pytest.mark.django_db
+def test_dostepne_piony_tylko_dni_powszednie(pion_nocny, wtorek, sroda):
+    r = list(dostepne_piony(dzien=wtorek))
+    pion, dostepny, przyczyna = r[0]
+    assert dostepny
+
+    dpo = pion.dostepnoscogolnapionu_set.create(
+        tylko_dni_powszednie=True
+    )
+    r = list(dostepne_piony(dzien=wtorek))
+    pion, dostepny, przyczyna = r[0]
+    assert not dostepny
+
+    r = list(dostepne_piony(dzien=sroda))
+    pion, dostepny, przyczyna = r[0]
+    assert  dostepny
+
+    dpo.dzien_3 = False
+    dpo.save()
+    r = list(dostepne_piony(dzien=sroda))
+    pion, dostepny, przyczyna = r[0]
+    assert dostepny
+
+    pion_nocny.domyslnie_dostepny = False
+    pion_nocny.save()
+    r = list(dostepne_piony(dzien=sroda))
+    pion, dostepny, przyczyna = r[0]
+    assert not dostepny

@@ -257,16 +257,8 @@ def dyzurow_w_miesiacu(dzien, zp, grafik):
 def dostepni_pracownicy(dzien, grafik):
     for zp in ZyczeniaPracownika.objects.all():
         # Sprawdź, czy ma tego dnia urlop
-        try:
-            urlop = zp.urlop_set.get(
-                Q(start__range=(dzien, dzien)) |
-                Q(koniec__range=(dzien, dzien)) |
-                Q(start__lt=dzien, koniec__gt=dzien)
-            )
-            yield (zp, False, const.URLOP, urlop)
-            continue
-        except Urlop.DoesNotExist:
-            pass
+        if zp.czy_ma_urlop(dzien):
+            yield (zp, False, const.URLOP, None)
 
         # Sprawdź, czy ma przypisanie szczegółowe na ten dzień
         miesiac = dzien.replace(day=1)
@@ -301,35 +293,11 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
     które mogą wziąć ten pion w danym dniu wobec konkretnego grafiku. """
 
     for zp in w_pracy:
-        # Ten użytkownik może wziąć coś tego dnia, sprawdźmy, czy ten pion:
-        if pion not in zp.wszystkie_dozwolone_piony():
-            # Ten użytkownik nie ma przypisania do tego pionu
-            yield (zp, False, const.BRAK_PRZYPISANIA, pion)
-            continue
-
-        dopasowanie = False
-        for zyczenie in zp.zyczeniaszczegolowe_set.all():
-            if zyczenie.relevant(pion, dzien):
-                dopasowanie = True
-                break
-
-        if not dopasowanie:
-            for zyczenie in zp.zyczeniaogolne_set.all().order_by("-kolejnosc"):
-                if zyczenie.relevant(pion, dzien):
-                    dopasowanie = True
-                    break
-
-        if not dopasowanie:
-            yield (zp, False, const.NIEDOPASOWANE, None)
-            # Życzenie nie jest dopasowane do pionu, nie analizuj dalszych
-            # dostępności, czasów itp
-            continue
-
-        # Jeżeli mamy adekwatne do pionu/daty życzenie i mówi ono, ze
-        # użytkownik NIE jest wówczas dostępny, to nie sprawdzaj, ile
-        # pracował itp itd, tylko w tym momencie zwróć, że nie:
-        if not getattr(zyczenie, 'dostepny', True):
-            yield (zp, False, const.OGOLNE, zyczenie)
+        status, kod, zyczenie = zp.czy_ma_regule_pozwalajaca_wziac(pion, dzien)
+        if not status:
+            # Jeżeli użytkownik nie ma na ten moment reguły pozwalającej wziąć
+            # dany pion w dany dzień, to dajemy sobie spokój:
+            yield (zp, status, kod, zyczenie)
             continue
 
         # sprawdź maks_godzin_ciaglej_pracy
@@ -394,7 +362,7 @@ def czy_moglby_wziac(pion, dzien, w_pracy, grafik):
                         yield (zp, False, const.MAKS_DYZURY_ZWYKLE_W_MIESIACU, n)
                         continue
 
-        yield (zp, True, const.ZYCZENIE, zyczenie)
+        yield (zp, status, kod, zyczenie)
 
 
 class TrackerRozpisan:

@@ -285,7 +285,7 @@ def test_czy_moglby_wziac_nieodstepny_w_tym_pionie_oglne_1(dyzurant, pion_nocny,
     )
     dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
     assert not moze
-    assert przyczyna == const.OGOLNE
+    assert przyczyna == const.ZYCZENIE
 
 
 def test_czy_moglby_wziac_nieodstepny_w_tym_pionie_oglne_2(dyzurant, pion_nocny, nowy_rok):
@@ -296,7 +296,7 @@ def test_czy_moglby_wziac_nieodstepny_w_tym_pionie_oglne_2(dyzurant, pion_nocny,
     )
     dyzurant, moze, przyczyna, obiekt = czy_dyzurant_wezmie(dyzurant, nowy_rok, pion_nocny)
     assert not moze
-    assert przyczyna == const.OGOLNE
+    assert przyczyna == const.ZYCZENIE
 
 
 def test_czy_moglby_wziac_ogolnie_nieodstepny_w_tym_pionie_ale_jest_szczegolowe(dyzurant, pion_nocny, nowy_rok):

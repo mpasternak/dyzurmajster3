@@ -1,5 +1,7 @@
 from django.core.exceptions import ValidationError
+from django.db import models
 
+from holidays.models import Holiday
 from piony import const
 
 
@@ -94,3 +96,66 @@ def pracownik_etatowy(pracownik, pion=None, dzien_1=True, dzien_2=True, dzien_3=
     )
 
     return dp
+
+
+class ModelZAdnotacjaMixin(models.Model):
+    adnotacja = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        abstract = True
+
+
+class DostepnoscOgolnaMixin(models.Model):
+    start = models.DateField("Początek", blank=True, null=True)
+    koniec = models.DateField("Koniec", blank=True, null=True)
+
+    dzien_1 = models.BooleanField("Pon.", default=True)
+    dzien_2 = models.BooleanField("Wt.", default=True)
+    dzien_3 = models.BooleanField("Śr.", default=True)
+    dzien_4 = models.BooleanField("Czw.", default=True)
+    dzien_5 = models.BooleanField("Pt.", default=True)
+    dzien_6 = models.BooleanField("Sob.", default=True)
+    dzien_7 = models.BooleanField("Nie.", default=True)
+
+    dostepny = models.BooleanField("Dostępny/a", default=True)
+
+    kolejnosc = models.PositiveSmallIntegerField(default=0, blank=False, null=False)
+
+    tylko_dni_powszednie = models.BooleanField(default=False)
+
+    def relevant_zakres_dat(self, dzien):
+        assert dzien is not None
+
+        attr_name = f"dzien_{dzien.isoweekday()}"
+        if not getattr(self, attr_name):
+            # Jeżeli ta reguła nie ma zastosowania do tego dnia tygodnia, to
+            # nie sprawdzaj zakresu dat
+            return False
+
+        if self.start is None and self.koniec is None:
+            return True
+
+        if self.start is not None and self.start <= dzien and self.koniec is None:
+            return True
+
+        if self.start is None and self.koniec is not None and self.koniec >= dzien:
+            return True
+
+        if self.start is not None and self.koniec is not None and self.start <= dzien and self.koniec >= dzien:
+            return True
+
+    def czy_dostepny(self, dzien):
+        if self.tylko_dni_powszednie:
+            if Holiday.objects.is_holiday(dzien):
+                return False
+
+        n = dzien.isoweekday()
+        attr = "dzien_%i" % n
+        if getattr(self, attr):
+            # Ta reguła ma zastosowanie do tego dnia tygodnia 'dzien'
+            return self.dostepny
+
+        return False
+
+    class Meta:
+        abstract = True

@@ -7,7 +7,8 @@ from mptt.models import MPTTModel
 from core.helpers import SprawdzZakresyMixin
 from holidays.models import Holiday
 from piony import const
-from django.conf import settings
+from .util import ModelZAdnotacjaMixin, DostepnoscOgolnaMixin
+
 
 class PatchedTreeManager(TreeManager):
     # wszystkie leafnodes
@@ -31,6 +32,8 @@ class Pion(MPTTModel):
     )
 
     nazwa = models.CharField(max_length=50, unique=True, db_index=True)
+
+    domyslnie_dostepny = models.BooleanField(default=True)
 
     parent = TreeForeignKey(
         'self', null=True, blank=True, related_name='children', db_index=True,
@@ -76,7 +79,32 @@ def dostepne_piony(dzien):
             yield (pion, False, pwp.przyczyna)
 
         except PrzerwaWPracyPionu.DoesNotExist:
-            yield (pion, True, None)
+            pass
+
+        found = False
+
+        for regula in pion.dostepnoscogolnapionu_set.all().order_by('-kolejnosc'):
+            if regula.relevant(dzien):
+                found = True
+                break
+
+        if found:
+            yield (pion, regula.czy_dostepny(dzien), regula.adnotacja)
+            continue
+
+        yield (pion, pion.domyslnie_dostepny, None)
+
+
+class DostepnoscOgolnaPionu(DostepnoscOgolnaMixin, ModelZAdnotacjaMixin):
+    parent = models.ForeignKey(Pion, models.CASCADE)
+
+    def relevant(self, dzien):
+        return self.relevant_zakres_dat(dzien)
+
+    class Meta:
+        ordering = ['kolejnosc']
+        verbose_name_plural = 'dostępności ogólne pionów'
+        verbose_name = 'dostępność ogólna pionu'
 
 
 class PrzerwaWPracyPionu(SprawdzZakresyMixin, models.Model):
@@ -89,7 +117,6 @@ class PrzerwaWPracyPionu(SprawdzZakresyMixin, models.Model):
         verbose_name = 'przerwa w pracy pionu'
         verbose_name_plural = 'przerwy w pracy pionu'
 
-
 # class KolejnoscPracownikaWPionie(models.Model):
 #     parent = models.ForeignKey(Pion, models.CASCADE)
 #     pracownik = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE)
@@ -99,4 +126,3 @@ class PrzerwaWPracyPionu(SprawdzZakresyMixin, models.Model):
 #         ordering = ['kolejnosc',]
 #         verbose_name = 'kolejność pracownika w pionie'
 #         verbose_name_plural = 'kolejności pracowników w pionach'
-

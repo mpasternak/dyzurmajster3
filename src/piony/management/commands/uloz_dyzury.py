@@ -15,5 +15,6 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, start, koniec, *args, **options):
         grafik = Grafik.objects.all().first()
-        grafik.wyczysc_wpisy(start, koniec)
-        grafik.uloz(start, koniec)
+        raise NotImplementedError
+        #grafik.wyczysc_wpisy(start, koniec)
+        #grafik.uloz(start, koniec)

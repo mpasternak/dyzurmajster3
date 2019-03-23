@@ -35,7 +35,8 @@ class OgraniczPionyMixin:
 class ZyczeniaOgolneInline(SortableInlineAdminMixin, OgraniczPionyMixin, admin.TabularInline):
     model = ZyczeniaOgolne
     fields = ['adnotacja', 'start', 'koniec', 'rodzaj_pionu', 'pion',
-              'dostepny', 'dzien_1', 'dzien_2', 'dzien_3', 'dzien_4', 'dzien_5',
+              'dostepny', 'tylko_dni_powszednie',
+              'dzien_1', 'dzien_2', 'dzien_3', 'dzien_4', 'dzien_5',
               'dzien_6', 'dzien_7', 'ilosc_zastosowan']
     extra = 0
 

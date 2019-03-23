@@ -9,16 +9,15 @@ from django.db.models import Q
 from mptt.fields import TreeForeignKey, TreeManyToManyField
 
 from piony import const
-from piony.models.util import lista_dni, sprawdz_liste_wobec_miesiaca, parsuj_liste_dni
+from piony.models.util import lista_dni, sprawdz_liste_wobec_miesiaca, parsuj_liste_dni, DostepnoscOgolnaMixin, \
+    ModelZAdnotacjaMixin
 from .pion import Pion
 
 
-class BazaZyczen(models.Model):
+class BazaZyczen(ModelZAdnotacjaMixin, models.Model):
     parent = models.ForeignKey("piony.ZyczeniaPracownika", models.CASCADE)
 
     pion = TreeForeignKey(Pion, models.CASCADE, blank=True, null=True, related_name="+")
-
-    adnotacja = models.CharField(max_length=50, blank=True, null=True)
 
     rodzaj_pionu = models.PositiveSmallIntegerField(
         choices=(
@@ -97,6 +96,11 @@ class ZyczeniaSzczegolowe(BazaZyczen):
     def relevant_zakres_dat(self, dzien):
         return dzien in self.daty()
 
+    def czy_dostepny(self, dzien):
+        if dzien in self.daty():
+            return True
+        return False
+
     class Meta:
         verbose_name = 'życzenie szczegółówe'
         verbose_name_plural = 'życzenia szczegółowe'
@@ -110,20 +114,7 @@ class ZyczeniaSzczegolowe(BazaZyczen):
         return ret
 
 
-class ZyczeniaOgolne(BazaZyczen):
-    start = models.DateField("Początek", blank=True, null=True)
-    koniec = models.DateField("Koniec", blank=True, null=True)
-
-    dzien_1 = models.BooleanField("Pon.", default=True)
-    dzien_2 = models.BooleanField("Wt.", default=True)
-    dzien_3 = models.BooleanField("Śr.", default=True)
-    dzien_4 = models.BooleanField("Czw.", default=True)
-    dzien_5 = models.BooleanField("Pt.", default=True)
-    dzien_6 = models.BooleanField("Sob.", default=True)
-    dzien_7 = models.BooleanField("Nie.", default=True)
-
-    dostepny = models.BooleanField("Dostępny/a", default=True)
-
+class ZyczeniaOgolne(DostepnoscOgolnaMixin, BazaZyczen):
     ilosc_zastosowan = models.PositiveSmallIntegerField(
         "Ilość zastosowań",
         null=True,
@@ -132,31 +123,8 @@ class ZyczeniaOgolne(BazaZyczen):
         help_text="Ile razy ta reguła ma być spełniona podczas trwania jej czasokresu. Czyli np. "
                   "'maksymalnie 2 dyżury od 1go do 15go'. ")
 
-    kolejnosc = models.PositiveSmallIntegerField(default=0, blank=False, null=False)
-
     def __str__(self):
         return f"Życzenie {self.adnotacja} dla {self.parent.user}"
-
-    def relevant_zakres_dat(self, dzien):
-        assert dzien is not None
-
-        attr_name = f"dzien_{dzien.isoweekday()}"
-        if not getattr(self, attr_name):
-            # Jeżeli ta reguła nie ma zastosowania do tego dnia tygodnia, to
-            # nie sprawdzaj zakresu dat
-            return False
-
-        if self.start is None and self.koniec is None:
-            return True
-
-        if self.start is not None and self.start <= dzien and self.koniec is None:
-            return True
-
-        if self.start is None and self.koniec is not None and self.koniec >= dzien:
-            return True
-
-        if self.start is not None and self.koniec is not None and self.start <= dzien and self.koniec >= dzien:
-            return True
 
     class Meta:
         verbose_name_plural = 'życzenia ogólne'
@@ -263,3 +231,43 @@ class ZyczeniaPracownika(models.Model):
 
         # Brak priorytetów. Zwróć bazowy priorytet
         return self.priorytet_bazowy
+
+    def czy_ma_urlop(self, dzien):
+        return self.urlop_set.filter(
+            Q(start__range=(dzien, dzien)) |
+            Q(koniec__range=(dzien, dzien)) |
+            Q(start__lt=dzien, koniec__gt=dzien)
+        ).exists()
+
+    def czy_ma_regule_pozwalajaca_wziac(self, pion, dzien):
+        # Sprawdza, czy ten użytkownik może wstepnie wziąć dany pion
+        # w dany dzień; bez sprawdzania czasu pracy, godzin itp,
+        # bez dotykania obiektu 'Grafik'
+
+        # Ten użytkownik może wziąć coś tego dnia, sprawdźmy, czy ten pion:
+        if pion not in self.wszystkie_dozwolone_piony():
+            # Ten użytkownik nie ma przypisania do tego pionu
+            return False, const.BRAK_PRZYPISANIA, pion
+
+        dopasowanie = False
+        for zyczenie in self.zyczeniaszczegolowe_set.all():
+            if zyczenie.relevant(pion, dzien):
+                dopasowanie = True
+                break
+
+        if not dopasowanie:
+            for zyczenie in self.zyczeniaogolne_set.all().order_by("-kolejnosc"):
+                if zyczenie.relevant(pion, dzien):
+                    dopasowanie = True
+                    break
+
+        if not dopasowanie:
+            return False, const.NIEDOPASOWANE, None
+
+        # Jeżeli mamy adekwatne do pionu/daty życzenie, to wywołajmy
+        # mu funkcję czy_dostepny, żeby zobaczyć własnie toL
+        dostepny = zyczenie.czy_dostepny(dzien)
+        if not dostepny:
+            return False, const.ZYCZENIE, zyczenie
+
+        return True, const.ZYCZENIE, zyczenie
