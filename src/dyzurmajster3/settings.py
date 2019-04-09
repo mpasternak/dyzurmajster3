@@ -71,7 +71,7 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'dyzurmajster3',
-        'PORT': os.getenv("PGPORT", '5433'),
+        'PORT': os.getenv("PGPORT", '5432'),
     }
 }
 
