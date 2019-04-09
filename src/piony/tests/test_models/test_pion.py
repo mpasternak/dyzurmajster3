@@ -3,12 +3,19 @@ from datetime import date
 import pytest
 from model_mommy import mommy
 
+from piony.const import POZA_PRACA
 from piony.models import Pion, dostepne_piony, PrzerwaWPracyPionu
 
 
 @pytest.mark.django_db
 def test_str():
     p = mommy.make(Pion, nazwa="LOL", rodzaj=None)
+    assert "LOL" in str(p)
+
+
+@pytest.mark.django_db
+def test_str_rodzaj():
+    p = mommy.make(Pion, nazwa="LOL", rodzaj=POZA_PRACA)
     assert "LOL" in str(p)
 
 
@@ -71,7 +78,7 @@ def test_dostepne_piony_tylko_dni_powszednie(pion_nocny, wtorek, sroda):
 
     r = list(dostepne_piony(dzien=sroda))
     pion, dostepny, przyczyna = r[0]
-    assert  dostepny
+    assert dostepny
 
     dpo.dzien_3 = False
     dpo.save()

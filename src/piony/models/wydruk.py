@@ -6,9 +6,7 @@ from django.db import models
 
 from holidays.models import Holiday
 from piony import const
-from piony.models import Pion, poczatek_miesiaca, koniec_miesiaca, PionNiePracuje, Nierozpisany, Wolne, \
-    poczatek_tygodnia, koniec_tygodnia
-from piony.models.util import repr_user
+from piony.models import Pion, poczatek_miesiaca, koniec_miesiaca, PionNiePracuje, poczatek_tygodnia, koniec_tygodnia
 
 
 class BlednyParametr(Exception):
@@ -109,7 +107,8 @@ def formatuj_tygodniowy(dane, bez_weekendow=True):
 class Wydruk(models.Model):
     kod = models.CharField(max_length=32, unique=True)
     nazwa = models.CharField(max_length=100, blank=True, null=True)
-    font_size = models.CharField("Wielkość czcionki", max_length=10, blank=True, null=True, help_text="CSS font-size; może być w pt, px, em...")
+    font_size = models.CharField("Wielkość czcionki", max_length=10, blank=True, null=True,
+                                 help_text="CSS font-size; może być w pt, px, em...")
 
     rodzaj = models.PositiveSmallIntegerField(
         choices=[
@@ -178,10 +177,9 @@ class ElementWydruku(models.Model):
             (const.KOLUMNA_DZIEN_TYGODNIA, "Dzień tygodnia"),
             (const.KOLUMNA_DZIEN_MIESIACA, "Dzień miesiąca"),
             (const.KOLUMNA_PION, "Pion"),
-            (const.KOLUMNA_WOLNE, "Wolne"),
-            (const.KOLUMNA_NIEROZPISANI, "Nierozpisani"),
             (const.KOLUMNA_PION_DZIENNY, "Pion dzienny"),
-            (const.KOLUMNA_PION_NOCNYSWIATECZNY, "Pion dyżurowy")
+            (const.KOLUMNA_PION_NOCNYSWIATECZNY, "Pion dyżurowy"),
+            (const.KOLUMNA_PION_I_PODRZEDNE, "Pion i podrzędne")
         ]
     )
 
@@ -198,24 +196,21 @@ class ElementWydruku(models.Model):
         return "element wydruku " + str(self.wydruk) + " nr " + str(self.kolejnosc)
 
     def clean(self):
-        if self.rodzaj == const.KOLUMNA_PION:
+        if self.rodzaj in [const.KOLUMNA_PION, const.KOLUMNA_PION_I_PODRZEDNE]:
             if self.pion is None:
-                raise ValidationError({"pion": "Jeżeli typ kolumny to pion, to wybierz jakiś pion"})
+                raise ValidationError(
+                    {"pion": "Jeżeli typ kolumny to 'pion' lub 'pion i podrzędne', to wybierz jakiś pion"})
         else:
             if self.pion is not None:
-                raise ValidationError({"pion": "Piony wpisuj tylko dla typu kolumny 'Pion'"})
+                raise ValidationError({"pion": "Piony wpisuj tylko dla typu kolumny 'Pion' oraz 'Pion i podrzędne'"})
 
     def header(self):
         if self.rodzaj == const.KOLUMNA_DATA:
             return "Dzień"
         elif self.rodzaj == const.KOLUMNA_DZIEN_TYGODNIA:
             return "Dzień tygodnia"
-        elif self.rodzaj == const.KOLUMNA_PION:
+        elif self.rodzaj in [const.KOLUMNA_PION, const.KOLUMNA_PION_I_PODRZEDNE]:
             return self.pion.nazwa
-        elif self.rodzaj == const.KOLUMNA_NIEROZPISANI:
-            return "Nierozpisani"
-        elif self.rodzaj == const.KOLUMNA_WOLNE:
-            return "Wolne"
         elif self.rodzaj == const.KOLUMNA_PION_DZIENNY:
             return "Pion dzienny"
         elif self.rodzaj == const.KOLUMNA_PION_NOCNYSWIATECZNY:
@@ -238,38 +233,27 @@ class ElementWydruku(models.Model):
         elif self.rodzaj == const.KOLUMNA_DZIEN_TYGODNIA:
             return dzien.strftime("%A")
 
-        elif self.rodzaj == const.KOLUMNA_WOLNE:
-            ret = defaultdict(list)
-            for wolne in Wolne.objects.filter(dzien=dzien, grafik=grafik):
+        elif self.rodzaj == const.KOLUMNA_PION_I_PODRZEDNE:
+            c = defaultdict(list)
+            for wpis in grafik.wpis_set.filter(
+                    dzien=dzien, pion__in=self.pion.get_descendants(include_self=True)):
+                c[wpis.pion.symbol or wpis.pion.nazwa].append(wpis.render())
 
-                if wolne.przyczyna.startswith("po dyż"):
-                    skrot = "☾"
-                elif wolne.przyczyna == "wypoczynkowy":
-                    skrot = "☀"
-                elif wolne.przyczyna == "L4":
-                    skrot = "L4"
-                else:
-                    skrot = wolne.przyczyna
-
-                ret[skrot].append(repr_user(wolne.user))
-
-            ret = [f"{przyczyna}&nbsp;{', '.join(ludzie)}" for przyczyna, ludzie in ret.items()]
-            return "<br>".join(ret)
-
-        elif self.rodzaj == const.KOLUMNA_NIEROZPISANI:
             ret = []
-            for nierozpisany in Nierozpisany.objects.filter(dzien=dzien, grafik=grafik):
-                ret.append(repr_user(nierozpisany.user))
-            return ", ".join(ret)
+            for key, values in c.items():
+                for value in values:
+                    ret.append(f'{key} {value}')
+            return "<br/>".join(ret)
 
         elif self.rodzaj == const.KOLUMNA_PION:
+            ret = []
             try:
                 pnp = PionNiePracuje.objects.get(dzien=dzien, pion=self.pion, grafik=grafik)
-                return pnp.przyczyna
+                ret.append(pnp.przyczyna)
+                # nie "return", bo mogą być lekarze przypisani (omyłkowo)
             except PionNiePracuje.DoesNotExist:
                 pass
 
-            ret = []
             for wpis in grafik.wpis_set.filter(dzien=dzien, pion=self.pion):
                 ret.append(wpis.render())
             return "<br/>".join(ret)

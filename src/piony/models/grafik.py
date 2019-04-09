@@ -420,10 +420,18 @@ class Grafik(models.Model):
                     Q(koniec__range=(dzien, dzien)) |
                     Q(start__lt=dzien, koniec__gt=dzien)
             ):
-                self.wolne_set.create(
+                try:
+                    pion = Pion.objects.get(nazwa=urlop.rodzaj)
+                    template = Wpis.DEFAULT_TEMPLATE
+                except Pion.DoesNotExist:
+                    pion = Pion.objects.get(nazwa="Wolne")
+                    template = urlop.rodzaj + ": " + Wpis.DEFAULT_TEMLATE
+
+                self.wpis_set.create(
                     dzien=dzien,
                     user=urlop.parent.user,
-                    przyczyna=urlop.rodzaj
+                    pion=pion,
+                    template=template
                 )
 
             # W tym momencie pracownicy to lista (zp, status, obiekt) zawierająca
@@ -458,10 +466,18 @@ class Grafik(models.Model):
                 rezultaty[pion] = lista
 
             for user in wolne_po_dyzurze:
-                self.wolne_set.create(
-                    user=user,
+                try:
+                    pion = Pion.objects.get(nazwa="po dyżurze")
+                    template = Wpis.DEFAULT_TEMPLATE
+                except Pion.DoesNotExist:
+                    pion = Pion.objects.get(nazwa="Wolne")
+                    template = "po dyżurze: " + Wpis.DEFAULT_TEMLATE
+
+                self.wpis_set.create(
                     dzien=dzien,
-                    przyczyna="po dyżurze"
+                    user=urlop.parent.user,
+                    pion=pion,
+                    template=template
                 )
 
             dostepni = {}
@@ -519,29 +535,20 @@ class Grafik(models.Model):
                             pion=pion,
                             kolejkaDump=kolejkaDump[pion]
                         )
-                        # print(pion, w.user)
+
                         tr.rozpisz(pion, pracownik)
                         break
 
                 if rodzaj == const.DZIENNY:
                     for nierozpisany in tr.nierozpisani():
-                        if self.pion_dla_nierozpisanych:
-                            self.wpis_set.create(
-                                user=nierozpisany.user,
-                                dzien=dzien,
-                                pion=self.pion_dla_nierozpisanych
-                            )
-                            # print("nierozpisany", nierozpisany.user, "=>", self.pion_dla_nierozpisanych)
-
-                        else:
-                            self.nierozpisany_set.create(
-                                user=nierozpisany.user,
-                                dzien=dzien
-                            )
-                            # print("nierozpisany", nierozpisany.user)
+                        self.wpis_set.create(
+                            user=nierozpisany.user,
+                            dzien=dzien,
+                            pion=self.pion_dla_nierozpisanych
+                        )
 
     def wyczysc_wpisy(self, start, koniec):
-        for rec_set in [self.wpis_set, self.pionniepracuje_set, self.wolne_set, self.nierozpisany_set]:
+        for rec_set in [self.wpis_set, self.pionniepracuje_set]:
             rec_set.filter(
                 dzien__range=(start, koniec)
             ).delete()
@@ -569,19 +576,13 @@ class PionNiePracuje(BazaWpisuGrafika):
     przyczyna = models.CharField(max_length=100)
 
 
-class Wolne(BazaWpisuUzytkownika):
-    przyczyna = models.CharField(max_length=100)
-
-
-class Nierozpisany(BazaWpisuUzytkownika):
-    pass
-
-
 class Wpis(BazaWpisuUzytkownika):
+    DEFAULT_TEMPLATE = "{{user.last_name}} {{user.first_name|first|capfirst}}."
+
     pion = models.ForeignKey(Pion, models.CASCADE)
     template = models.TextField(
-        default=None, blank=True, null=True,
-        help_text="""{{user.last_name}} {{user.first_name|first|capfirst}}""")
+        default=DEFAULT_TEMPLATE,
+        blank=True, null=True)
 
     kolejkaDump = models.TextField(blank=True, null=True)
 

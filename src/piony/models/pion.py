@@ -33,6 +33,8 @@ class Pion(MPTTModel):
 
     nazwa = models.CharField(max_length=50, unique=True, db_index=True)
 
+    symbol = models.CharField(max_length=3, null=True, blank=True)
+
     domyslnie_dostepny = models.BooleanField(default=True)
 
     parent = TreeForeignKey(
@@ -49,6 +51,7 @@ class Pion(MPTTModel):
             None: "żaden",
             const.DZIENNY: "☀",
             const.NOCNYSWIATECZNY: "☾",
+            const.POZA_PRACA: ""
         }
         ret = self.nazwa
         if self.rodzaj is not None:
@@ -116,6 +119,7 @@ class PrzerwaWPracyPionu(SprawdzZakresyMixin, models.Model):
     class Meta:
         verbose_name = 'przerwa w pracy pionu'
         verbose_name_plural = 'przerwy w pracy pionu'
+
 
 # class KolejnoscPracownikaWPionie(models.Model):
 #     parent = models.ForeignKey(Pion, models.CASCADE)

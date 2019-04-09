@@ -1,8 +1,7 @@
 from django.contrib import admin
-from django.contrib import admin
 from mptt.admin import MPTTModelAdmin
 
-from piony.models import Pion, PrzerwaWPracyPionu, DostepnoscOgolnaPionu  # , KolejnoscPracownikaWPionie
+from piony.models import Pion, PrzerwaWPracyPionu, DostepnoscOgolnaPionu, PionNiePracuje  # , KolejnoscPracownikaWPionie
 
 
 class PrzerwaWPracyPionuInline(admin.TabularInline):
@@ -28,5 +27,10 @@ class DostepnoscOgolnaPionuInline(admin.TabularInline):
 class PionAdmin(MPTTModelAdmin):
     inlines = [PrzerwaWPracyPionuInline, DostepnoscOgolnaPionuInline]  # KolejnoscPracownikaWPionieInline]
     list_filter = ['rodzaj', 'priorytet']
-    list_display = ['nazwa', 'rodzaj', 'priorytet', 'sort']
+    list_display = ['nazwa', 'rodzaj', 'symbol', 'domyslnie_dostepny', 'priorytet', 'sort']
+    pass
+
+
+@admin.register(PionNiePracuje)
+class PionNiePracujeAdmin(admin.ModelAdmin):
     pass
