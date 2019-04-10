@@ -14,4 +14,4 @@ install:
   - pipenv install -d
 
 script:
-  - pytest && coveralls
+  - pytest -c pytest-travis.ini && coveralls
