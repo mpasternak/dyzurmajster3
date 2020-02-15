@@ -1,5 +1,5 @@
 # -*- encoding: utf-8 -*-
-
+from adminsortable.models import SortableMixin
 from dateutil import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -114,7 +114,7 @@ class ZyczeniaSzczegolowe(BazaZyczen):
         return ret
 
 
-class ZyczeniaOgolne(DostepnoscOgolnaMixin, BazaZyczen):
+class ZyczeniaOgolne(SortableMixin, DostepnoscOgolnaMixin, BazaZyczen):
     ilosc_zastosowan = models.PositiveSmallIntegerField(
         "Ilość zastosowań",
         null=True,

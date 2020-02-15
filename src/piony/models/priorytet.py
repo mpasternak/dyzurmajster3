@@ -1,3 +1,4 @@
+from adminsortable.models import SortableMixin
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from mptt.fields import TreeManyToManyField
@@ -6,7 +7,7 @@ from .pion import Pion
 from .zyczenia import ZyczeniaPracownika
 
 
-class Priorytet(models.Model):
+class Priorytet(SortableMixin, models.Model):
     parent = models.ForeignKey(ZyczeniaPracownika, models.CASCADE)
 
     start = models.DateField(db_index=True)

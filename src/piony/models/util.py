@@ -1,8 +1,25 @@
+from datetime import timedelta
+
+from dateutil import relativedelta
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from holidays.models import Holiday
 from piony import const
+
+
+def podziel_liste_dni(v):
+    v = v.strip()
+    if not v:
+        return
+
+    for splitter in ",;":
+        if v.find(splitter) >= 0:
+            break
+
+    for elem in v.split(splitter):
+        yield elem
 
 
 def lista_dni(value):
@@ -12,14 +29,14 @@ def lista_dni(value):
         try:
             v = int(v)
         except (ValueError, TypeError):
-            raise ValidationError("Podaj listę liczb oddzieloną przecinkami lub zakresy, np. 1,2,3,4-10,12")
+            raise ValidationError("Podaj listę liczb oddzieloną przecinkami, średnikami lub zakresy, np. 1,2,3,4-10,12")
 
         if v < 1:
             raise ValidationError("liczby muszą być dodatnie, większe od zera, a tu jedna z nich to %s" % v)
         if v > 31:
             raise ValidationError("liczby muszą być mniejsze od 31, a tu jedna z nich to %s" % v)
 
-    for elem in value.strip().split(","):
+    for elem in podziel_liste_dni(value):
         if elem.find("-") > 0:
             for value in elem.split("-", 1):
                 sprawdz_dzien(value)
@@ -28,11 +45,7 @@ def lista_dni(value):
 
 
 def parsuj_liste_dni(v):
-    v = v.strip()
-    if not v:
-        return
-
-    for elem in v.split(","):
+    for elem in podziel_liste_dni(v):
         elem = elem.strip()
         if not elem:
             raise ValidationError("Lista zawiera puste elementy. Poszukaj podwójnego przecinka.")
@@ -159,3 +172,31 @@ class DostepnoscOgolnaMixin(models.Model):
 
     class Meta:
         abstract = True
+
+
+def poczatek_tygodnia(data):
+    if data.isoweekday == 1:
+        return data
+    return data - timedelta(days=data.isoweekday() - 1)
+
+
+def koniec_tygodnia(data):
+    return poczatek_tygodnia(data) + timedelta(days=6)
+
+
+def poczatek_miesiaca(dzien=None):
+    if dzien is None:
+        dzien = timezone.now().date()
+    return dzien.replace(day=1)
+
+
+def koniec_miesiaca(dzien=None):
+    if dzien is None:
+        dzien = timezone.now().date()
+    return poczatek_miesiaca(dzien) + relativedelta.relativedelta(day=31)
+
+
+def nastepny_miesiac(dzien=None):
+    if dzien is None:
+        dzien = timezone.now().date()
+    return koniec_miesiaca(dzien) + timedelta(days=1)

@@ -10,8 +10,8 @@ django-db-constraints = "*"
 "psycopg2-binary" = "*"
 workalendar = "*"
 django-extensions = "*"
-django-admin-sortable2 = "*"
 progressbar2 = "*"
+django-admin-sortable = "*"
 
 [dev-packages]
 pytest = "*"

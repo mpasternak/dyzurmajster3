@@ -37,6 +37,13 @@ class Pion(MPTTModel):
 
     domyslnie_dostepny = models.BooleanField(default=True)
 
+    ilosc_godzin = models.PositiveSmallIntegerField(
+        null=True, blank=True, default=None,
+        help_text="Jeżeli jest to pion nocny (popołudniowy) np. żylaki od 15tej do 19tej, "
+                  "wpisz tutaj przeciętną ilość godzin dla tego pionu. Jeżeli jest to zwykły, "
+                  "pełny pion dyżurowy lub dzienny (16, 24, 8 godzin) to pozostaw to pole puste. "
+    )
+
     parent = TreeForeignKey(
         'self', null=True, blank=True, related_name='children', db_index=True,
         verbose_name="Pion nadrzędny", on_delete=models.CASCADE)
@@ -45,6 +52,27 @@ class Pion(MPTTModel):
     sort = models.PositiveSmallIntegerField(default=0)
 
     objects = PatchedTreeManager()
+
+    def ile_godzin(self, dzien):
+        if self.ilosc_godzin is not None:
+            return self.ilosc_godzin
+
+        holiday = Holiday.objects.is_holiday(dzien)
+
+        if self.rodzaj == const.DZIENNY:
+            if holiday:
+                return 0
+            return 8
+
+        if self.rodzaj == const.NOCNYSWIATECZNY:
+            if holiday:
+                return 24
+            return 16
+
+        if self.rodzaj == const.POZA_PRACA:
+            return 0
+
+        raise ValueError(self.pion.rodzaj)
 
     def __str__(self):
         m = {
@@ -80,6 +108,7 @@ def dostepne_piony(dzien):
                 )
             )
             yield (pion, False, pwp.przyczyna)
+            continue
 
         except PrzerwaWPracyPionu.DoesNotExist:
             pass
@@ -119,7 +148,6 @@ class PrzerwaWPracyPionu(SprawdzZakresyMixin, models.Model):
     class Meta:
         verbose_name = 'przerwa w pracy pionu'
         verbose_name_plural = 'przerwy w pracy pionu'
-
 
 # class KolejnoscPracownikaWPionie(models.Model):
 #     parent = models.ForeignKey(Pion, models.CASCADE)

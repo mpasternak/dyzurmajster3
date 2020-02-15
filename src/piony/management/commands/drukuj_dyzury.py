@@ -5,7 +5,8 @@ from django.contrib.auth.models import User
 from django.core.management import BaseCommand
 from django.db import transaction
 
-from piony.models import Grafik, Wydruk, nastepny_miesiac, koniec_miesiaca
+from piony.models import Grafik, Wydruk
+from piony.models.util import nastepny_miesiac, koniec_miesiaca
 
 locale.setlocale(locale.LC_ALL, '')
 

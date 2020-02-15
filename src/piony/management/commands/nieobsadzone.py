@@ -8,7 +8,8 @@ from django.db import transaction
 
 from core.helpers import daterange
 from piony import const
-from piony.models import Grafik, nastepny_miesiac, koniec_miesiaca, dostepne_piony, Pion, ZyczeniaPracownika
+from piony.models import Grafik, dostepne_piony, Pion, ZyczeniaPracownika
+from piony.models.util import nastepny_miesiac, koniec_miesiaca
 
 locale.setlocale(locale.LC_ALL, '')
 
@@ -17,13 +18,15 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         from piony.utils import parse_date
         parser.add_argument('--start', type=parse_date, default=nastepny_miesiac(datetime.now().date()))
-        parser.add_argument('--koniec', type=parse_date,
-                            default=koniec_miesiaca(nastepny_miesiac(datetime.now().date())))
+        parser.add_argument('--koniec', type=parse_date, default=None)
         parser.add_argument('--username')
 
     @transaction.atomic
     def handle(self, start, koniec, username, *args, **options):
         user = None
+        if koniec is None:
+            koniec = koniec_miesiaca(start)
+
         if username:
             user = User.objects.get(username=username)
             zp = ZyczeniaPracownika.objects.get(user=user)
@@ -80,22 +83,34 @@ class Command(BaseCommand):
                                 rodzaj=piony[nieobsadzony_pion].rodzaj,
                                 pk__in=obsadzone[dzien]).exclude(pk=nieobsadzony_pion):
 
-                            do_przesuniecia = grafik.wpis_set.get(pion=obsadzony_pion, dzien=dzien)
+                            try:
+                                do_przesuniecia = grafik.wpis_set.get(pion=obsadzony_pion, dzien=dzien)
+                            except Exception as e:
+                                print(obsadzony_pion, dzien)
+                                # raise e
+                                # UWAGA UWAGA UWAGA: w sytuacji gdy jest 2 osoby na 1 sale np specj + rezdydent
+                                # to ta procedura zglosi blad bo jest 2 osoby JEDNAKZE nie mam czasu
+                                # tego teraz poprawiac
+                                continue
+                            
                             try:
                                 do_przesuniecia.user.zyczeniapracownika
                             except:
                                 continue
 
-                            stan1, przyczyna1, obiekt1 = do_przesuniecia.user.zyczeniapracownika.czy_ma_regule_pozwalajaca_wziac(piony[nieobsadzony_pion], dzien)
+                            stan1, przyczyna1, obiekt1 = do_przesuniecia.user.zyczeniapracownika.czy_ma_regule_pozwalajaca_wziac(
+                                piony[nieobsadzony_pion], dzien)
 
                             stan2, przyczyna2, obiekt2 = zp.czy_ma_regule_pozwalajaca_wziac(obsadzony_pion, dzien)
-                            print("Sprwadzam, czy %s moze wziac %s => %s" % (do_przesuniecia.user, piony[nieobsadzony_pion], stan1))
+                            print("Sprwadzam, czy %s moze wziac %s => %s" % (
+                            do_przesuniecia.user, piony[nieobsadzony_pion], stan1))
                             print("Sprawdzam czy %s moze wziac %s => %s" % (user, obsadzony_pion, stan2))
                             if stan1 and stan2:
-                                nieobsadzone_dla_usera.add((dzien, piony[nieobsadzony_pion], "pod warunkiem, że %s z %s -> %s" % (
-                                    do_przesuniecia,
-                                    obsadzony_pion.nazwa,
-                                    piony[nieobsadzony_pion].nazwa)))
+                                nieobsadzone_dla_usera.add(
+                                    (dzien, piony[nieobsadzony_pion], "pod warunkiem, że %s z %s -> %s" % (
+                                        do_przesuniecia,
+                                        obsadzony_pion.nazwa,
+                                        piony[nieobsadzony_pion].nazwa)))
                                 break
 
             print(dzien, ", ".join([piony[pion].nazwa for pion in lista_pionow]))
@@ -113,6 +128,7 @@ class Command(BaseCommand):
                 print("\t*", dzien, piony[pion])
 
         if user:
+
             def wypisz(rodzaj=const.DZIENNY):
                 for dzien, pion, komentarz in sorted(nieobsadzone_dla_usera, key=lambda obj: obj[0]):
                     if pion.rodzaj == rodzaj:

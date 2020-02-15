@@ -1,12 +1,14 @@
 from collections import defaultdict
 from datetime import timedelta, datetime
 
+from adminsortable.models import SortableMixin
 from django.core.exceptions import ValidationError
 from django.db import models
 
 from holidays.models import Holiday
 from piony import const
-from piony.models import Pion, poczatek_miesiaca, koniec_miesiaca, PionNiePracuje, poczatek_tygodnia, koniec_tygodnia
+from piony.models import Pion, PionNiePracuje
+from piony.models.util import poczatek_miesiaca, koniec_miesiaca, poczatek_tygodnia, koniec_tygodnia
 
 
 class BlednyParametr(Exception):
@@ -135,6 +137,8 @@ class Wydruk(models.Model):
             return formatuj_miesieczny(tytul, dane, font_size=self.font_size)
 
         elif self.rodzaj == const.TYGODNIOWY:
+            while start.isoweekday() >= 6:
+                start += timedelta(days=1)
             start = poczatek_tygodnia(start)
             koniec = koniec_tygodnia(koniec)
             dane = self.dane(grafik, start=start, koniec=koniec, user=user)
@@ -168,7 +172,7 @@ kolumnaNaRodzaj = {
 }
 
 
-class ElementWydruku(models.Model):
+class ElementWydruku(SortableMixin, models.Model):
     wydruk = models.ForeignKey(Wydruk, models.CASCADE)
 
     rodzaj = models.PositiveSmallIntegerField(

@@ -1,3 +1,4 @@
+import locale
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,6 +17,7 @@ ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
     # 'django.contrib.sites',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -23,12 +25,14 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+
+    'adminsortable',
     'django_extensions',
     'mptt',
-    'adminsortable2',
 
     'holidays',
     'piony',
+
 
     # 'finalware'
 ]
@@ -107,6 +111,8 @@ USE_I18N = True
 USE_L10N = True
 
 USE_TZ = True
+
+locale.setlocale(locale.LC_ALL, '')
 
 
 

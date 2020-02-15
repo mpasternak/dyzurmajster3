@@ -3,8 +3,8 @@ from datetime import timedelta
 from uuid import uuid4
 
 import progressbar
-from dateutil import relativedelta
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
@@ -17,7 +17,7 @@ from holidays.models import Holiday
 from piony import const
 from .pion import Pion, dostepne_piony
 from .urlop import Urlop
-from .util import repr_user
+from .util import repr_user, poczatek_miesiaca, koniec_miesiaca, poczatek_tygodnia, koniec_tygodnia
 from .zyczenia import ZyczeniaPracownika
 
 
@@ -36,15 +36,7 @@ def ile_robil_czy_mial_dobe(dzien, zp, grafik):
     godzin = 0
 
     for wpis in Wpis.objects.filter(user=zp.user, grafik=grafik, dzien=dzien):
-        if wpis.pion.rodzaj == const.DZIENNY:
-            godzin += 8
-        elif wpis.pion.rodzaj == const.NOCNYSWIATECZNY:
-            if Holiday.objects.is_holiday(dzien):
-                godzin += 24
-            else:
-                godzin += 16
-        else:
-            raise ValueError(wpis.pion.rodzaj)
+        godzin += wpis.pion.ile_godzin(dzien)
 
     return (godzin, godzin == 24)
 
@@ -71,8 +63,8 @@ def ostatnio_pracowal_godzin_temu(chce_rozpisac, dzis, zp, grafik, delta=1):
 
         if ile_robil == 0:
             return 24
-        if ile_robil == 8:
-            return 16
+        if ile_robil >= 8 and ile_robil < 16:
+            return 24 - ile_robil
         if ile_robil == 16 or ile_robil == 24:
             return 0
     elif chce_rozpisac == const.NOCNYSWIATECZNY:
@@ -163,14 +155,6 @@ def zwyklych_w_miesiacu(dzien, zp, grafik):
     return jakichs_w_miesiacu(dzien, zp, grafik, dni_powszednie_w_miesiacu)
 
 
-def poczatek_tygodnia(data):
-    return data - timedelta(days=data.isoweekday() - 1)
-
-
-def koniec_tygodnia(data):
-    return poczatek_tygodnia(data) + timedelta(days=6)
-
-
 def dni_jakies_w_miesiacu(data, holiday_status):
     for elem in daterange(poczatek_miesiaca(data), koniec_miesiaca(data)):
         if Holiday.objects.is_holiday(elem) == holiday_status:
@@ -214,18 +198,6 @@ def ostatni_dyzur_dni_temu(dzien, zp, grafik):
     return ostatni_rodzaj_pionu_dni_temu(dzien, zp, grafik, const.NOCNYSWIATECZNY)
 
 
-def poczatek_miesiaca(dzien):
-    return dzien.replace(day=1)
-
-
-def koniec_miesiaca(dzien):
-    return poczatek_miesiaca(dzien) + relativedelta.relativedelta(day=31)
-
-
-def nastepny_miesiac(dzien):
-    return koniec_miesiaca(dzien) + timedelta(days=1)
-
-
 def sprawdz_nie_dyzuruje_z(dzien, zp, grafik, rodzaj=const.NOCNYSWIATECZNY):
     """Sprawdz, czy w dniu 'dzien' ma dyzur osoba, ktora jest wymieniona
     w zp.nie_dyzuruje_z"""
@@ -259,6 +231,7 @@ def dostepni_pracownicy(dzien, grafik):
         # Sprawdź, czy ma tego dnia urlop
         if zp.czy_ma_urlop(dzien):
             yield (zp, False, const.URLOP, None)
+            continue
 
         # Sprawdź, czy ma przypisanie szczegółowe na ten dzień
         miesiac = dzien.replace(day=1)
@@ -447,12 +420,16 @@ class Grafik(models.Model):
             wolne_po_dyzurze = set()
             for pion, dostepny, przyczyna in piony:
                 if not dostepny:
-                    self.pionniepracuje_set.create(
+                    if przyczyna is None:
+                        continue  # jeżeli nie podano przyczyny, to nie twórz takiego wpisu
+                    self.wpis_set.create(
                         pion=pion,
                         dzien=dzien,
-                        przyczyna=przyczyna
+                        user=User.objects.get(username='admin'),
+                        template=przyczyna
                     )
                     continue
+
                 lista = list(czy_moglby_wziac(pion, dzien, w_pracy, grafik=self))
 
                 if pion.rodzaj == const.DZIENNY:
@@ -475,7 +452,7 @@ class Grafik(models.Model):
 
                 self.wpis_set.create(
                     dzien=dzien,
-                    user=urlop.parent.user,
+                    user=user,
                     pion=pion,
                     template=template
                 )
@@ -554,8 +531,11 @@ class Grafik(models.Model):
             ).delete()
 
 
+def pierwszy_grafik():
+    return Grafik.objects.all().first()
+
 class BazaWpisuGrafika(models.Model):
-    grafik = models.ForeignKey(Grafik, models.CASCADE)
+    grafik = models.ForeignKey(Grafik, models.CASCADE, default=pierwszy_grafik)
     dzien = models.DateField(db_index=True)
 
     zmodyfikowano = models.DateTimeField(auto_now=True)
@@ -577,7 +557,8 @@ class PionNiePracuje(BazaWpisuGrafika):
 
 
 class Wpis(BazaWpisuUzytkownika):
-    DEFAULT_TEMPLATE = "{{user.last_name}} {{user.first_name|first|capfirst}}."
+    # DEFAULT_TEMPLATE = "{{user.last_name}} {{user.first_name|first|capfirst}}."
+    DEFAULT_TEMPLATE = "{%if user.last_name%}{{user.last_name}}{%else%}{{user.username}}{%endif%}{% if user.first_name %} {{user.first_name|first|capfirst}}.{%endif%}"
 
     pion = models.ForeignKey(Pion, models.CASCADE)
     template = models.TextField(
